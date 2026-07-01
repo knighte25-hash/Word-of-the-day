@@ -1,0 +1,12 @@
+{
+  "name": "Word of the Day",
+  "short_name": "WordDay",
+  "description": "Learn a new word every day with a definition, example, and quiz.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f6f4fb",
+  "theme_color": "#4b3f72",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
