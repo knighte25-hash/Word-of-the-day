@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Word of the Day</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#4b3f72">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css">
+
+<!--
+  OneSignal Web Push — real push notifications, incl. iOS 16.4+ Home Screen apps.
+  1. Create a free account + Web app at https://onesignal.com and copy its App ID.
+  2. Replace ONESIGNAL_APP_ID below with that value.
+  3. This site must be hosted over HTTPS (not opened as a local file) for push to work.
+-->
+<script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+<script>
+  window.OneSignalDeferred = window.OneSignalDeferred || [];
+  OneSignalDeferred.push(async function (OneSignal) {
+    await OneSignal.init({
+      appId: "475f442f-3203-4783-b80d-8387a3917414",
+      // Our service worker (sw.js) is combined with OneSignal's — see sw.js —
+      // so point the SDK at it instead of the default OneSignalSDKWorker.js.
+      serviceWorkerPath: "sw.js",
+    });
+  });
+</script>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>📖 Word of the Day</h1>
+      <nav class="tabs">
+        <button class="tab-btn active" data-tab="today">Today</button>
+        <button class="tab-btn" data-tab="quiz">Quiz</button>
+        <button class="tab-btn" data-tab="history">History</button>
+      </nav>
+    </header>
+
+    <main>
+      <!-- TODAY -->
+      <section id="tab-today" class="tab-panel active">
+        <div id="word-card" class="card loading">
+          <p class="date-label" id="date-label"></p>
+          <div class="word-row">
+            <h2 id="word-text">Loading…</h2>
+            <button id="audio-btn" class="icon-btn" title="Play pronunciation" hidden>🔊</button>
+          </div>
+          <p id="phonetic" class="phonetic"></p>
+          <p id="part-of-speech" class="pos"></p>
+          <p id="definition" class="definition"></p>
+          <div id="example-wrap" class="block" hidden>
+            <h3>Example</h3>
+            <p id="example"></p>
+          </div>
+          <div id="usage-wrap" class="block" hidden>
+            <h3>How to use it</h3>
+            <p id="usage-tip"></p>
+          </div>
+          <div id="synonyms-wrap" class="block" hidden>
+            <h3>Synonyms</h3>
+            <p id="synonyms"></p>
+          </div>
+          <div id="error-msg" class="error" hidden></div>
+        </div>
+
+        <div class="notify-box">
+          <button id="notify-btn" class="secondary-btn">🔔 Remind me daily</button>
+          <p id="notify-status" class="hint"></p>
+        </div>
+      </section>
+
+      <!-- QUIZ -->
+      <section id="tab-quiz" class="tab-panel">
+        <div id="quiz-empty" class="card" hidden>
+          <p>Come back after you've learned a few words — the quiz pulls from your history.</p>
+        </div>
+        <div id="quiz-card" class="card" hidden>
+          <p class="quiz-prompt" id="quiz-prompt"></p>
+          <div id="quiz-options" class="quiz-options"></div>
+          <p id="quiz-feedback" class="quiz-feedback"></p>
+          <button id="quiz-next" class="secondary-btn" hidden>Next question</button>
+        </div>
+      </section>
+
+      <!-- HISTORY -->
+      <section id="tab-history" class="tab-panel">
+        <div class="history-controls">
+          <span id="history-count" class="hint"></span>
+          <button id="clear-history" class="text-btn">Clear history</button>
+        </div>
+        <ul id="history-list" class="history-list"></ul>
+      </section>
+    </main>
+
+    <footer>
+      <p>Definitions from the <a href="https://dictionaryapi.dev" target="_blank" rel="noopener">Free Dictionary API</a>.</p>
+    </footer>
+  </div>
+
+  <script src="words.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
