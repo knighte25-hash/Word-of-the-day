@@ -1,0 +1,960 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Scripture Memory</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Scripture">
+<meta name="theme-color" content="#1e293b">
+<link rel="manifest" href="./manifest.json">
+<link rel="apple-touch-icon" href="./icon-192.png">
+<link rel="icon" href="./icon-192.png">
+
+<!--
+  ONESIGNAL SETUP
+  ---------------
+  1. Create a free account at https://onesignal.com and add a "Web Push" app
+     ("Typical Site" integration is easiest — no coding required for prompts).
+  2. Set the Site URL to the exact URL where you host this app (must be HTTPS).
+  3. Copy your OneSignal App ID and paste it below, replacing YOUR_ONESIGNAL_APP_ID.
+  4. Download the OneSignalSDKWorker.js file the dashboard gives you and use it
+     to replace the placeholder file of the same name included with this app.
+  5. In the OneSignal dashboard, create an Automated Message (a daily recurring
+     push) to remind yourself to do scripture memory — see SETUP-INSTRUCTIONS.md.
+-->
+<script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+<script>
+  window.OneSignalDeferred = window.OneSignalDeferred || [];
+  OneSignalDeferred.push(async function (OneSignal) {
+    await OneSignal.init({
+      appId: "939247d2-1a29-4c84-85ef-e9dd50e169e4",
+    });
+  });
+</script>
+
+<style>
+  :root {
+    --bg: #1e293b;
+    --bg-card: #273449;
+    --accent: #e2be78;
+    --text: #f1f5f9;
+    --text-dim: #9fb0c3;
+    --good: #4ade80;
+    --bad: #f87171;
+    --border: #334155;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html {
+    height: 100%;
+  }
+  body {
+    margin: 0; padding: 0; min-height: 100%; color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background-color: var(--bg);
+    /* Background art + dark overlay are painted directly on <body> (not a
+       fixed/negative-z-index div) since that combination didn't reliably
+       render in testing. A plain body background always paints. */
+    background-repeat: no-repeat, no-repeat;
+    background-position: center, center 30%;
+    background-size: cover, cover;
+    background-attachment: fixed, fixed;
+  }
+  #artCredit {
+    position: fixed; left: 0; right: 0; bottom: env(safe-area-inset-bottom);
+    text-align: center; font-size: 10px; color: rgba(241,245,249,.35);
+    padding: 2px 0; pointer-events: none; z-index: 5;
+  }
+  #app {
+    max-width: 520px; margin: 0 auto; min-height: 100vh;
+    display: flex; flex-direction: column;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  header {
+    padding: 18px 20px 12px; display: flex; align-items: center; justify-content: space-between;
+    padding-top: max(18px, env(safe-area-inset-top));
+  }
+  header h1 {
+    font-size: 19px; margin: 0; font-weight: 600;
+    text-shadow: 0 2px 8px rgba(0,0,0,.6);
+  }
+  .streak {
+    display: flex; align-items: center; gap: 5px;
+    background: rgba(39,52,73,.55); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,255,255,.12); padding: 5px 10px; border-radius: 20px; font-size: 13px;
+  }
+  main { flex: 1; padding: 0 16px 16px; overflow-y: auto; }
+  .card {
+    background: rgba(39,52,73,.62); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    border: 1px solid rgba(255,255,255,.10); border-radius: 14px;
+    padding: 18px; margin-bottom: 14px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.25);
+  }
+  .ref { font-weight: 700; font-size: 16px; color: var(--accent); margin-bottom: 8px; }
+  .theme-tag {
+    display: inline-block; font-size: 11px; text-transform: uppercase; letter-spacing: .04em;
+    color: var(--text-dim); border: 1px solid var(--border); padding: 2px 8px; border-radius: 12px;
+    margin-bottom: 10px;
+  }
+  .verse-text { font-size: 17px; line-height: 1.55; white-space: pre-wrap; }
+  .verse-text .blank { color: var(--text-dim); border-bottom: 1px dashed var(--text-dim); }
+  .muted { color: var(--text-dim); font-size: 13px; }
+  button {
+    font: inherit; cursor: pointer; border: none; border-radius: 10px;
+    padding: 11px 16px; background: var(--accent); color: #1a1305; font-weight: 600;
+  }
+  button.secondary {
+    background: rgba(39,52,73,.55); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    color: var(--text); border: 1px solid rgba(255,255,255,.14);
+  }
+  button.small { padding: 7px 12px; font-size: 13px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  textarea, input[type=text], input[type=password], input[type=time] {
+    width: 100%; background: rgba(26,35,51,.75); border: 1px solid rgba(255,255,255,.14); color: var(--text);
+    border-radius: 10px; padding: 10px 12px; font-size: 15px; font-family: inherit;
+  }
+  textarea { min-height: 90px; resize: vertical; }
+  label { display: block; font-size: 13px; color: var(--text-dim); margin: 14px 0 6px; }
+  nav {
+    display: flex; border-top: 1px solid rgba(255,255,255,.1);
+    background: rgba(15,20,30,.75); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  nav button {
+    flex: 1; background: none; border-radius: 0; color: var(--text-dim);
+    padding: 12px 4px 10px; font-size: 11px; font-weight: 500;
+  }
+  nav button.active { color: var(--accent); }
+  nav button .ic { display: block; font-size: 18px; margin-bottom: 2px; }
+  .hidden { display: none !important; }
+  .mode-tabs {
+    display: flex; gap: 6px; margin-bottom: 12px; overflow-x: auto;
+  }
+  .mode-tab {
+    background: rgba(39,52,73,.45); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    color: var(--text-dim); border: 1px solid rgba(255,255,255,.12);
+    padding: 8px 13px; font-size: 13px; font-weight: 600; white-space: nowrap; border-radius: 20px;
+  }
+  .mode-tab.active { background: var(--accent); color: #1a1305; border-color: var(--accent); }
+  .word-zone {
+    display: flex; flex-wrap: wrap; gap: 8px; min-height: 46px;
+    padding: 10px; border: 1px dashed rgba(255,255,255,.18); border-radius: 10px;
+    background: rgba(0,0,0,.12);
+  }
+  .word-chip {
+    background: rgba(39,52,73,.9); color: var(--text); border: 1px solid rgba(255,255,255,.16);
+    padding: 8px 12px; border-radius: 8px; font-size: 15px; cursor: pointer;
+  }
+  .word-chip.placed { background: rgba(226,190,120,.18); border-color: var(--accent); color: var(--accent); }
+  .word-chip.correct { background: rgba(74,222,128,.18); border-color: var(--good); color: var(--good); }
+  .word-chip.wrong { background: rgba(248,113,113,.18); border-color: var(--bad); color: var(--bad); }
+  .blank-input {
+    display: inline-block; width: auto; min-width: 46px; max-width: 160px;
+    background: rgba(226,190,120,.14); border: 1px solid var(--accent); color: var(--accent);
+    border-radius: 6px; padding: 2px 6px; font-size: 16px; font-family: inherit; text-align: center;
+    margin: 0 2px;
+  }
+  .blank-input.correct { background: rgba(74,222,128,.18); border-color: var(--good); color: var(--good); }
+  .blank-input.wrong { background: rgba(248,113,113,.18); border-color: var(--bad); color: var(--bad); }
+  .list-item {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 12px 4px; border-bottom: 1px solid var(--border); font-size: 14px;
+  }
+  .list-item:last-child { border-bottom: none; }
+  .pill {
+    font-size: 12px; padding: 3px 9px; border-radius: 10px; background: var(--bg);
+    border: 1px solid var(--border); color: var(--text-dim);
+  }
+  .diff-word { padding: 1px 2px; border-radius: 3px; }
+  .diff-good { background: rgba(74,222,128,.18); color: var(--good); }
+  .diff-bad { background: rgba(248,113,113,.18); color: var(--bad); text-decoration: line-through; }
+  .toast {
+    position: fixed; bottom: 78px; left: 50%; transform: translateX(-50%);
+    background: var(--accent); color: #1a1305; padding: 10px 18px; border-radius: 10px;
+    font-size: 14px; font-weight: 600; z-index: 50; box-shadow: 0 4px 14px rgba(0,0,0,.3);
+  }
+  a { color: var(--accent); }
+</style>
+</head>
+<body style="background-image: linear-gradient(180deg, rgba(15,20,30,.55) 0%, rgba(15,20,30,.72) 45%, rgba(15,20,30,.92) 78%, rgba(15,20,30,.98) 100%), url('data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgODAwIDE2MDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CiAgPGRlZnM+CiAgICA8cmFkaWFsR3JhZGllbnQgaWQ9Imdsb3ciIGN4PSI1MCUiIGN5PSI1NSUiIHI9IjYwJSI+CiAgICAgIDxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiNmZmY2ZDgiLz4KICAgICAgPHN0b3Agb2Zmc2V0PSIyNSUiIHN0b3AtY29sb3I9IiNmZmRmOGYiLz4KICAgICAgPHN0b3Agb2Zmc2V0PSI1NSUiIHN0b3AtY29sb3I9IiMzYzM0NjgiLz4KICAgICAgPHN0b3Agb2Zmc2V0PSIxMDAlIiBzdG9wLWNvbG9yPSIjMTAxMjJhIi8+CiAgICA8L3JhZGlhbEdyYWRpZW50PgogICAgPGxpbmVhckdyYWRpZW50IGlkPSJwYWdlTCIgeDE9IjAiIHkxPSIwIiB4Mj0iMSIgeTI9IjAiPgogICAgICA8c3RvcCBvZmZzZXQ9IjAlIiBzdG9wLWNvbG9yPSIjZDhjZmE4Ii8+CiAgICAgIDxzdG9wIG9mZnNldD0iMTAwJSIgc3RvcC1jb2xvcj0iI2ZiZjNkOSIvPgogICAgPC9saW5lYXJHcmFkaWVudD4KICAgIDxsaW5lYXJHcmFkaWVudCBpZD0icGFnZVIiIHgxPSIwIiB5MT0iMCIgeDI9IjEiIHkyPSIwIj4KICAgICAgPHN0b3Agb2Zmc2V0PSIwJSIgc3RvcC1jb2xvcj0iI2ZiZjNkOSIvPgogICAgICA8c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiNkOGNmYTgiLz4KICAgIDwvbGluZWFyR3JhZGllbnQ+CiAgPC9kZWZzPgogIDxyZWN0IHdpZHRoPSI4MDAiIGhlaWdodD0iMTYwMCIgZmlsbD0idXJsKCNnbG93KSIvPgoKICA8IS0tIGxpZ2h0IHJheXMgZmFubmluZyB1cCBmcm9tIHRoZSBib29rJ3MgZ3V0dGVyIC0tPgogIDxnIHN0cm9rZT0iI2ZmZjZkOCIgc3Ryb2tlLXdpZHRoPSI3IiBvcGFjaXR5PSIwLjUiPgogICAgPGxpbmUgeDE9IjQwMCIgeTE9IjEwMjAiIHgyPSI0MDAiIHkyPSIxMjAiLz4KICAgIDxsaW5lIHgxPSI0MDAiIHkxPSIxMDIwIiB4Mj0iMjMwIiB5Mj0iMTgwIi8+CiAgICA8bGluZSB4MT0iNDAwIiB5MT0iMTAyMCIgeDI9IjU3MCIgeTI9IjE4MCIvPgogICAgPGxpbmUgeDE9IjQwMCIgeTE9IjEwMjAiIHgyPSIxMjAiIHkyPSIzMzAiLz4KICAgIDxsaW5lIHgxPSI0MDAiIHkxPSIxMDIwIiB4Mj0iNjgwIiB5Mj0iMzMwIi8+CiAgICA8bGluZSB4MT0iNDAwIiB5MT0iMTAyMCIgeDI9IjcwIiB5Mj0iNTYwIi8+CiAgICA8bGluZSB4MT0iNDAwIiB5MT0iMTAyMCIgeDI9IjczMCIgeTI9IjU2MCIvPgogIDwvZz4KICA8ZyBzdHJva2U9IiNmZmU5YWQiIHN0cm9rZS13aWR0aD0iMyIgb3BhY2l0eT0iMC4zNSI+CiAgICA8bGluZSB4MT0iNDAwIiB5MT0iMTAyMCIgeDI9IjMxMCIgeTI9IjE0MCIvPgogICAgPGxpbmUgeDE9IjQwMCIgeTE9IjEwMjAiIHgyPSI0OTAiIHkyPSIxNDAiLz4KICAgIDxsaW5lIHgxPSI0MDAiIHkxPSIxMDIwIiB4Mj0iMTcwIiB5Mj0iMjUwIi8+CiAgICA8bGluZSB4MT0iNDAwIiB5MT0iMTAyMCIgeDI9IjYzMCIgeTI9IjI1MCIvPgogIDwvZz4KCiAgPCEtLSBzb2Z0IHN0YXJzIGluIHRoZSB1cHBlciBkYXJrIGNvcm5lcnMgLS0+CiAgPGcgZmlsbD0iI2ZmZmZmZiI+CiAgICA8Y2lyY2xlIGN4PSI4MCIgY3k9IjEyMCIgcj0iMiIgb3BhY2l0eT0iMC42Ii8+CiAgICA8Y2lyY2xlIGN4PSI3MjAiIGN5PSIxMTAiIHI9IjIiIG9wYWNpdHk9IjAuNiIvPgogICAgPGNpcmNsZSBjeD0iNjAiIGN5PSIyNjAiIHI9IjEuNSIgb3BhY2l0eT0iMC40Ii8+CiAgICA8Y2lyY2xlIGN4PSI3NDAiIGN5PSIyNzAiIHI9IjEuNSIgb3BhY2l0eT0iMC40Ii8+CiAgPC9nPgoKICA8IS0tIHdhcm0gZ2xvdyBiZWhpbmQgdGhlIGJvb2sgLS0+CiAgPGVsbGlwc2UgY3g9IjQwMCIgY3k9IjEwNjAiIHJ4PSIzMjAiIHJ5PSIxNDAiIGZpbGw9IiNmZmYyYzQiIG9wYWNpdHk9IjAuNTUiLz4KICA8ZWxsaXBzZSBjeD0iNDAwIiBjeT0iMTA2MCIgcng9IjIzMCIgcnk9Ijk1IiBmaWxsPSIjZmZmY2ViIiBvcGFjaXR5PSIwLjYiLz4KCiAgPCEtLSBib29rIGNvdmVyIC8gc3RhbmQgdW5kZXIgdGhlIHBhZ2VzIC0tPgogIDxwYXRoIGQ9Ik0xNTAgMTE4MCBRNDAwIDEyMzAgNjUwIDExODAgTDY1MCAxMjMwIFE0MDAgMTI4MCAxNTAgMTIzMCBaIiBmaWxsPSIjNWEzYTI0Ii8+CgogIDwhLS0gbGVmdCBwYWdlLCBhbmdsZWQgb3BlbiAtLT4KICA8cGF0aCBkPSJNNDAwIDEwODAKICAgICAgICAgICBMMTQ1IDExNTAKICAgICAgICAgICBRMTM1IDExNTUgMTM4IDExNjgKICAgICAgICAgICBMMTY1IDEyMzAKICAgICAgICAgICBRMTcwIDEyNDAgMTgyIDEyMzYKICAgICAgICAgICBMNDAwIDExNzAKICAgICAgICAgICBaIiBmaWxsPSJ1cmwoI3BhZ2VMKSIgc3Ryb2tlPSIjYzliZDkxIiBzdHJva2Utd2lkdGg9IjIiLz4KICA8IS0tIHJpZ2h0IHBhZ2UsIGFuZ2xlZCBvcGVuIC0tPgogIDxwYXRoIGQ9Ik00MDAgMTA4MAogICAgICAgICAgIEw2NTUgMTE1MAogICAgICAgICAgIFE2NjUgMTE1NSA2NjIgMTE2OAogICAgICAgICAgIEw2MzUgMTIzMAogICAgICAgICAgIFE2MzAgMTI0MCA2MTggMTIzNgogICAgICAgICAgIEw0MDAgMTE3MAogICAgICAgICAgIFoiIGZpbGw9InVybCgjcGFnZVIpIiBzdHJva2U9IiNjOWJkOTEiIHN0cm9rZS13aWR0aD0iMiIvPgoKICA8IS0tIGEgY291cGxlIG1vcmUgcGFnZSBsYXllcnMgdW5kZXJuZWF0aCBmb3IgdGhpY2tuZXNzIC0tPgogIDxwYXRoIGQ9Ik00MDAgMTA5MCBMMjAwIDExNDggUTE5MiAxMTUyIDE5NSAxMTYyIEw0MDAgMTE3OCBaIiBmaWxsPSIjZWZlNmM0IiBvcGFjaXR5PSIwLjkiLz4KICA8cGF0aCBkPSJNNDAwIDEwOTAgTDYwMCAxMTQ4IFE2MDggMTE1MiA2MDUgMTE2MiBMNDAwIDExNzggWiIgZmlsbD0iI2VmZTZjNCIgb3BhY2l0eT0iMC45Ii8+CgogIDwhLS0gdGV4dCBsaW5lcyBzdWdnZXN0aW5nIHNjcmlwdHVyZSAobm8gbGVnaWJsZSB3b3JkcyBuZWVkZWQpIC0tPgogIDxnIHN0cm9rZT0iI2E4OTc3ZiIgc3Ryb2tlLXdpZHRoPSIzIiBvcGFjaXR5PSIwLjU1IiBzdHJva2UtbGluZWNhcD0icm91bmQiPgogICAgPGxpbmUgeDE9IjIzMCIgeTE9IjExNjgiIHgyPSIzMzAiIHkyPSIxMTQ1Ii8+CiAgICA8bGluZSB4MT0iMjI1IiB5MT0iMTE4MyIgeDI9IjMzNSIgeTI9IjExNjAiLz4KICAgIDxsaW5lIHgxPSIyMjAiIHkxPSIxMTk4IiB4Mj0iMzQwIiB5Mj0iMTE3NiIvPgogICAgPGxpbmUgeDE9IjQ3MCIgeTE9IjExNDUiIHgyPSI1NzAiIHkyPSIxMTY4Ii8+CiAgICA8bGluZSB4MT0iNDY1IiB5MT0iMTE2MCIgeDI9IjU3NSIgeTI9IjExODMiLz4KICAgIDxsaW5lIHgxPSI0NjAiIHkxPSIxMTc2IiB4Mj0iNTgwIiB5Mj0iMTE5OCIvPgogIDwvZz4KCiAgPCEtLSBjZW50ZXIgc3BpbmUgaGlnaGxpZ2h0IC0tPgogIDxwYXRoIGQ9Ik00MDAgMTA4MCBMNDAwIDExNzgiIHN0cm9rZT0iI2ZmZmZmZiIgc3Ryb2tlLXdpZHRoPSI0IiBvcGFjaXR5PSIwLjYiLz4KCiAgPCEtLSBkaXN0YW50IGdyb3VuZC9oaWxsIHNpbGhvdWV0dGUgZm9yIGNvbnRpbnVpdHkgd2l0aCBvdGhlciBzY2VuZXMgLS0+CiAgPGcgZmlsbD0iIzBkMGUyMiIgb3BhY2l0eT0iMC44NSI+CiAgICA8cGF0aCBkPSJNMCAxNDIwIFEyMjAgMTM3MCA0NDAgMTQyMCBUODAwIDE0MDAgTDgwMCAxNjAwIEwwIDE2MDAgWiIvPgogIDwvZz4KPC9zdmc+Cg==')">
+<div id="artCredit">The Living Word — Hebrews 4:12</div>
+<div id="app">
+  <header>
+    <h1>📖 Scripture Memory</h1>
+    <div class="streak">🔥 <span id="streakCount">0</span> day streak</div>
+  </header>
+
+  <main id="main">
+
+    <!-- TODAY -->
+    <section id="view-today">
+      <div class="card">
+        <div class="theme-tag" id="todayTheme">Theme</div>
+        <div class="ref" id="todayRef">Loading…</div>
+        <div class="verse-text" id="todayText">Fetching from ESV…</div>
+        <div class="row">
+          <button class="small secondary" id="btnNewVerse">🔀 Shuffle</button>
+          <button class="small secondary" id="btnFavorite">☆ Save</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="muted" style="margin-bottom:10px;">Ready to practice this verse?</div>
+        <div class="row" style="margin-top:0;">
+          <button id="btnGoPractice">Start Practicing →</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- PRACTICE -->
+    <section id="view-practice" class="hidden">
+      <div class="card" style="padding-bottom:12px;">
+        <div class="theme-tag" id="pTheme">Theme</div>
+        <div class="ref" id="pRef">—</div>
+      </div>
+
+      <div class="mode-tabs" id="practiceModeTabs">
+        <button class="mode-tab active" data-mode="study">Study</button>
+        <button class="mode-tab" data-mode="blank">Fill Blank</button>
+        <button class="mode-tab" data-mode="order">Word Order</button>
+        <button class="mode-tab" data-mode="type">Type Out</button>
+      </div>
+
+      <!-- STUDY: progressive word-hiding -->
+      <div id="mode-study" class="practice-mode">
+        <div class="card">
+          <div class="muted" style="margin-bottom:8px;">Progressively hide words to test recall:</div>
+          <div class="verse-text" id="pText">—</div>
+          <div class="row">
+            <button class="small secondary" id="btnHideMore">Hide more words</button>
+            <button class="small secondary" id="btnReveal">Reveal all</button>
+          </div>
+          <div class="muted" id="hideLevel" style="margin-top:10px;">Stage 0 of 5 — full text</div>
+        </div>
+      </div>
+
+      <!-- FILL IN THE BLANK -->
+      <div id="mode-blank" class="practice-mode hidden">
+        <div class="card">
+          <div class="muted" style="margin-bottom:8px;">Fill in the missing words:</div>
+          <div class="verse-text" id="blankText">—</div>
+          <div class="row">
+            <button id="btnCheckBlanks">Check Answers</button>
+            <button class="secondary" id="btnNewBlanks">New Blanks</button>
+            <button class="secondary" id="btnRevealBlanks">Reveal</button>
+          </div>
+          <div id="blankResult" style="margin-top:12px;"></div>
+        </div>
+      </div>
+
+      <!-- WORD ORDER -->
+      <div id="mode-order" class="practice-mode hidden">
+        <div class="card">
+          <div class="muted" style="margin-bottom:8px;">Tap the words in the correct order:</div>
+          <div class="word-zone" id="assembledZone"></div>
+          <div class="muted" style="margin:12px 0 6px;">Word bank:</div>
+          <div class="word-zone" id="bankZone"></div>
+          <div class="row">
+            <button id="btnCheckOrder">Check Order</button>
+            <button class="secondary" id="btnShuffleOrder">Reshuffle</button>
+          </div>
+          <div id="orderResult" style="margin-top:12px;"></div>
+        </div>
+      </div>
+
+      <!-- TYPE IT OUT -->
+      <div id="mode-type" class="practice-mode hidden">
+        <div class="card">
+          <div class="muted" style="margin-bottom:8px;">Type it from memory:</div>
+          <textarea id="typeInput" placeholder="Start typing the verse…"></textarea>
+          <div class="row">
+            <button id="btnCheck">Check</button>
+            <button class="secondary" id="btnClearType">Clear</button>
+          </div>
+          <div id="typeResult" style="margin-top:12px;"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- MY VERSES -->
+    <section id="view-mine" class="hidden">
+      <div class="card">
+        <div class="muted" style="margin-bottom:8px;">Add a verse reference to your rotation:</div>
+        <input type="text" id="addRefInput" placeholder="e.g. Psalm 23:1">
+        <div class="row">
+          <button id="btnAddRef">Add Verse</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="muted" style="margin-bottom:4px;">Saved / favorited verses</div>
+        <div id="favList"></div>
+      </div>
+      <div class="card">
+        <div class="muted" style="margin-bottom:4px;">Full rotation (<span id="rotationCount">0</span> verses)</div>
+        <div id="allList" style="max-height:260px; overflow-y:auto;"></div>
+      </div>
+    </section>
+
+    <!-- SETTINGS -->
+    <section id="view-settings" class="hidden">
+      <div class="card">
+        <div class="ref" style="margin-bottom:2px;">ESV API Key</div>
+        <div class="muted" style="margin-bottom:8px;">Free, non-commercial key from
+          <a href="https://api.esv.org/account/" target="_blank">api.esv.org/account</a>.
+          Stored only on this device.</div>
+        <input type="password" id="esvKeyInput" placeholder="Paste your ESV API key">
+        <div class="row">
+          <button id="btnSaveKey">Save Key</button>
+          <button class="secondary" id="btnTestKey">Test</button>
+        </div>
+        <div class="muted" id="keyStatus" style="margin-top:8px;"></div>
+      </div>
+
+      <div class="card">
+        <div class="ref" style="margin-bottom:2px;">Daily Reminder</div>
+        <div class="muted" style="margin-bottom:8px;">
+          This time is just a note to yourself — the actual push notification schedule
+          is configured once in your OneSignal dashboard (Automated Message). See
+          SETUP-INSTRUCTIONS.md.
+        </div>
+        <input type="time" id="reminderTime" value="07:00">
+        <div class="row">
+          <button id="btnSaveReminder" class="secondary">Save Preference</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="ref" style="margin-bottom:2px;">Progress</div>
+        <div class="muted">Current streak: <span id="settingsStreak">0</span> days</div>
+        <div class="muted">Longest streak: <span id="settingsBest">0</span> days</div>
+        <div class="muted">Verses practiced: <span id="settingsCount">0</span></div>
+        <div class="row">
+          <button class="secondary" id="btnResetProgress">Reset Progress</button>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <nav>
+    <button class="nav-btn active" data-view="today"><span class="ic">🌅</span>Today</button>
+    <button class="nav-btn" data-view="practice"><span class="ic">🧠</span>Practice</button>
+    <button class="nav-btn" data-view="mine"><span class="ic">📚</span>My Verses</button>
+    <button class="nav-btn" data-view="settings"><span class="ic">⚙️</span>Settings</button>
+  </nav>
+</div>
+
+<script>
+// ---------------------------------------------------------------------------
+// Curated verse rotation (references only — text is fetched live from ESV)
+// ---------------------------------------------------------------------------
+const VERSES = [
+  {ref:"John 3:16", theme:"Salvation"},
+  {ref:"Romans 3:23", theme:"Salvation"},
+  {ref:"Romans 6:23", theme:"Salvation"},
+  {ref:"Romans 10:9", theme:"Salvation"},
+  {ref:"Ephesians 2:8-9", theme:"Salvation"},
+  {ref:"Titus 3:5", theme:"Salvation"},
+  {ref:"Acts 4:12", theme:"Salvation"},
+  {ref:"1 John 5:11-13", theme:"Assurance"},
+  {ref:"Romans 8:1", theme:"Assurance"},
+  {ref:"2 Corinthians 5:17", theme:"New Life"},
+  {ref:"Hebrews 11:1", theme:"Faith"},
+  {ref:"Romans 10:17", theme:"Faith"},
+  {ref:"2 Corinthians 5:7", theme:"Faith"},
+  {ref:"Mark 11:24", theme:"Faith"},
+  {ref:"Philippians 4:13", theme:"Strength"},
+  {ref:"Isaiah 41:10", theme:"Strength"},
+  {ref:"Joshua 1:9", theme:"Courage"},
+  {ref:"Psalm 27:1", theme:"Courage"},
+  {ref:"Deuteronomy 31:6", theme:"Courage"},
+  {ref:"Philippians 4:6-7", theme:"Peace"},
+  {ref:"Matthew 6:34", theme:"Peace"},
+  {ref:"John 14:27", theme:"Peace"},
+  {ref:"1 Peter 5:7", theme:"Anxiety"},
+  {ref:"Psalm 34:4", theme:"Anxiety"},
+  {ref:"1 Corinthians 13:4-7", theme:"Love"},
+  {ref:"John 13:34-35", theme:"Love"},
+  {ref:"Romans 5:8", theme:"Love"},
+  {ref:"1 John 4:19", theme:"Love"},
+  {ref:"Proverbs 3:5-6", theme:"Trust"},
+  {ref:"James 1:5", theme:"Wisdom"},
+  {ref:"Psalm 119:105", theme:"Wisdom"},
+  {ref:"Philippians 4:6", theme:"Prayer"},
+  {ref:"1 Thessalonians 5:17", theme:"Prayer"},
+  {ref:"James 5:16", theme:"Prayer"},
+  {ref:"Jeremiah 29:11", theme:"Hope"},
+  {ref:"Romans 15:13", theme:"Hope"},
+  {ref:"Romans 8:28", theme:"Purpose"},
+  {ref:"Ephesians 4:32", theme:"Forgiveness"},
+  {ref:"1 John 1:9", theme:"Forgiveness"},
+  {ref:"Colossians 3:13", theme:"Forgiveness"},
+  {ref:"Psalm 56:3", theme:"Trust"},
+  {ref:"Isaiah 26:3", theme:"Trust"},
+  {ref:"Ephesians 2:10", theme:"Purpose"},
+  {ref:"2 Timothy 3:16-17", theme:"Word of God"},
+  {ref:"Psalm 119:11", theme:"Word of God"},
+  {ref:"Hebrews 4:12", theme:"Word of God"},
+  {ref:"1 Corinthians 10:13", theme:"Temptation"},
+  {ref:"James 1:2-3", theme:"Trials"},
+  {ref:"James 4:7", theme:"Temptation"},
+  {ref:"Proverbs 16:9", theme:"Guidance"},
+  {ref:"Psalm 32:8", theme:"Guidance"},
+  {ref:"1 Thessalonians 5:18", theme:"Gratitude"},
+  {ref:"Psalm 100:4-5", theme:"Gratitude"},
+  {ref:"Micah 6:8", theme:"Humility"},
+  {ref:"James 4:10", theme:"Humility"},
+  {ref:"Philippians 2:3-4", theme:"Humility"},
+  {ref:"Galatians 6:9", theme:"Patience"},
+  {ref:"Romans 12:12", theme:"Patience"},
+  {ref:"Philippians 4:11-13", theme:"Contentment"},
+  {ref:"Hebrews 13:5", theme:"Contentment"},
+  {ref:"Proverbs 9:10", theme:"Fear of the Lord"},
+  {ref:"Matthew 28:19-20", theme:"Great Commission"},
+  {ref:"Galatians 5:22-23", theme:"Fruit of the Spirit"},
+  {ref:"Ephesians 6:10-11", theme:"Armor of God"},
+  {ref:"Galatians 2:20", theme:"New Life"},
+  {ref:"Matthew 22:37-39", theme:"Great Commandment"},
+  {ref:"2 Corinthians 1:3-4", theme:"Comfort"},
+  {ref:"Psalm 23:1-4", theme:"Comfort"},
+  {ref:"Matthew 11:28-30", theme:"Rest"}
+];
+
+// ---------------------------------------------------------------------------
+// Background art — original illustrations embedded directly as inline SVG
+// data URIs (source files also kept in /art for reference). Embedding them
+// means there's zero network or relative-path dependency: they render even
+// if this file is opened standalone, previewed in an iframe, or offline.
+// ---------------------------------------------------------------------------
+const BIBLE_ART = [
+  { file: "data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgODAwIDE2MDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CiAgPGRlZnM+CiAgICA8cmFkaWFsR3JhZGllbnQgaWQ9ImciIGN4PSI1MCUiIGN5PSIzMCUiIHI9Ijc1JSI+CiAgICAgIDxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiNmZmYzZDYiLz4KICAgICAgPHN0b3Agb2Zmc2V0PSIxOCUiIHN0b3AtY29sb3I9IiNmNmNmN2EiLz4KICAgICAgPHN0b3Agb2Zmc2V0PSI0MiUiIHN0b3AtY29sb3I9IiNhNTZlYTAiLz4KICAgICAgPHN0b3Agb2Zmc2V0PSI3MCUiIHN0b3AtY29sb3I9IiMzYzJmNmIiLz4KICAgICAgPHN0b3Agb2Zmc2V0PSIxMDAlIiBzdG9wLWNvbG9yPSIjMTIxMDJiIi8+CiAgICA8L3JhZGlhbEdyYWRpZW50PgogIDwvZGVmcz4KICA8cmVjdCB3aWR0aD0iODAwIiBoZWlnaHQ9IjE2MDAiIGZpbGw9InVybCgjZykiLz4KICA8ZyBzdHJva2U9IiNmZmYzZDYiIHN0cm9rZS13aWR0aD0iMiIgb3BhY2l0eT0iMC4zNSI+CiAgICA8bGluZSB4MT0iNDAwIiB5MT0iNDgwIiB4Mj0iNDAwIiB5Mj0iNjAiLz4KICAgIDxsaW5lIHgxPSI0MDAiIHkxPSI0ODAiIHgyPSI2MjAiIHkyPSIxNDAiLz4KICAgIDxsaW5lIHgxPSI0MDAiIHkxPSI0ODAiIHgyPSI3NTAiIHkyPSIzMzAiLz4KICAgIDxsaW5lIHgxPSI0MDAiIHkxPSI0ODAiIHgyPSIxODAiIHkyPSIxNDAiLz4KICAgIDxsaW5lIHgxPSI0MDAiIHkxPSI0ODAiIHgyPSI1MCIgeTI9IjMzMCIvPgogICAgPGxpbmUgeDE9IjQwMCIgeTE9IjQ4MCIgeDI9IjU2MCIgeTI9IjkwIi8+CiAgICA8bGluZSB4MT0iNDAwIiB5MT0iNDgwIiB4Mj0iMjQwIiB5Mj0iOTAiLz4KICA8L2c+CiAgPGNpcmNsZSBjeD0iNDAwIiBjeT0iNDgwIiByPSIxMjAiIGZpbGw9IiNmZmZhZjAiIG9wYWNpdHk9IjAuOSIvPgogIDxjaXJjbGUgY3g9IjQwMCIgY3k9IjQ4MCIgcj0iMTcwIiBmaWxsPSIjZmZlOWIzIiBvcGFjaXR5PSIwLjM1Ii8+CiAgPGcgZmlsbD0iI2ZmZmZmZiI+CiAgICA8Y2lyY2xlIGN4PSI5MCIgY3k9IjEyMCIgcj0iMi4yIiBvcGFjaXR5PSIwLjgiLz4KICAgIDxjaXJjbGUgY3g9IjE1MCIgY3k9IjI2MCIgcj0iMS42IiBvcGFjaXR5PSIwLjYiLz4KICAgIDxjaXJjbGUgY3g9IjcyMCIgY3k9IjE1MCIgcj0iMiIgb3BhY2l0eT0iMC43Ii8+CiAgICA8Y2lyY2xlIGN4PSI2NjAiIGN5PSIzMDAiIHI9IjEuNSIgb3BhY2l0eT0iMC41Ii8+CiAgICA8Y2lyY2xlIGN4PSI2MCIgY3k9IjY1MCIgcj0iMS44IiBvcGFjaXR5PSIwLjYiLz4KICAgIDxjaXJjbGUgY3g9Ijc0MCIgY3k9IjcwMCIgcj0iMiIgb3BhY2l0eT0iMC42Ii8+CiAgICA8Y2lyY2xlIGN4PSIyMDAiIGN5PSI5MDAiIHI9IjEuNCIgb3BhY2l0eT0iMC41Ii8+CiAgICA8Y2lyY2xlIGN4PSI2MDAiIGN5PSI5NTAiIHI9IjEuNiIgb3BhY2l0eT0iMC41Ii8+CiAgICA8Y2lyY2xlIGN4PSIxMDAiIGN5PSIxMjAwIiByPSIxLjQiIG9wYWNpdHk9IjAuNCIvPgogICAgPGNpcmNsZSBjeD0iNzAwIiBjeT0iMTI1MCIgcj0iMS42IiBvcGFjaXR5PSIwLjQiLz4KICAgIDxjaXJjbGUgY3g9IjM4MCIgY3k9IjE0MDAiIHI9IjEuNCIgb3BhY2l0eT0iMC4zNSIvPgogIDwvZz4KPC9zdmc+Cg==", credit: "The Creation of Light — Genesis 1:3" },
+  { file: "data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgODAwIDE2MDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CiAgPGRlZnM+CiAgICA8bGluZWFyR3JhZGllbnQgaWQ9ImciIHgxPSIwIiB5MT0iMCIgeDI9IjAiIHkyPSIxIj4KICAgICAgPHN0b3Agb2Zmc2V0PSIwJSIgc3RvcC1jb2xvcj0iIzRiNWI2YiIvPgogICAgICA8c3RvcCBvZmZzZXQ9IjM1JSIgc3RvcC1jb2xvcj0iIzMzNDY1YyIvPgogICAgICA8c3RvcCBvZmZzZXQ9IjY1JSIgc3RvcC1jb2xvcj0iIzFmMzE0NSIvPgogICAgICA8c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiMwZDE4MjYiLz4KICAgIDwvbGluZWFyR3JhZGllbnQ+CiAgPC9kZWZzPgogIDxyZWN0IHdpZHRoPSI4MDAiIGhlaWdodD0iMTYwMCIgZmlsbD0idXJsKCNnKSIvPgogIDxwYXRoIGQ9Ik0gLTIwIDI2MCBBIDQ4MCAyNjAgMCAwIDEgMjAwIDE5MCIgc3Ryb2tlPSIjZTljOWQwIiBzdHJva2Utd2lkdGg9IjE0IiBmaWxsPSJub25lIiBvcGFjaXR5PSIwLjI1Ii8+CiAgPHBhdGggZD0iTSAtMjAgMzAwIEEgNTIwIDMwMCAwIDAgMSAyNjAgMjIwIiBzdHJva2U9IiNlMmRjYTAiIHN0cm9rZS13aWR0aD0iMTQiIGZpbGw9Im5vbmUiIG9wYWNpdHk9IjAuMjIiLz4KICA8cGF0aCBkPSJNIC0yMCAzNDAgQSA1NjAgMzQwIDAgMCAxIDMyMCAyNTAiIHN0cm9rZT0iI2E3Y2JiMCIgc3Ryb2tlLXdpZHRoPSIxNCIgZmlsbD0ibm9uZSIgb3BhY2l0eT0iMC4yIi8+CiAgPGcgZmlsbD0iIzBiMTMxZSIgb3BhY2l0eT0iMC44NSI+CiAgICA8ZWxsaXBzZSBjeD0iMTIwIiBjeT0iNDMwIiByeD0iMjIwIiByeT0iNTUiLz4KICAgIDxlbGxpcHNlIGN4PSI2MDAiIGN5PSI0NzAiIHJ4PSIyNjAiIHJ5PSI2MCIvPgogICAgPGVsbGlwc2UgY3g9IjM4MCIgY3k9IjQxMCIgcng9IjE4MCIgcnk9IjQ1Ii8+CiAgPC9nPgogIDxnPgogICAgPHBhdGggZD0iTTI3MCA5MDAgTDUzMCA5MDAgTDUwMCA5NzAgUTQwMCA5OTUgMzAwIDk3MCBaIiBmaWxsPSIjMGIxMzFlIi8+CiAgICA8cmVjdCB4PSIzMDAiIHk9Ijg0MCIgd2lkdGg9IjIwMCIgaGVpZ2h0PSI3MCIgcng9IjEwIiBmaWxsPSIjMGIxMzFlIi8+CiAgICA8cGF0aCBkPSJNMzAwIDg0MCBRNDAwIDc5MCA1MDAgODQwIFoiIGZpbGw9IiMwYjEzMWUiLz4KICAgIDxyZWN0IHg9IjM4MCIgeT0iODAwIiB3aWR0aD0iNDAiIGhlaWdodD0iMzAiIGZpbGw9IiMwYjEzMWUiLz4KICA8L2c+CiAgPGcgZmlsbD0iIzBkMTgyNiIgb3BhY2l0eT0iMC45NSI+CiAgICA8cGF0aCBkPSJNMCAxMDgwIFExMDAgMTA0MCAyMDAgMTA4MCBUNDAwIDEwODAgVDYwMCAxMDgwIFQ4MDAgMTA4MCBMODAwIDE2MDAgTDAgMTYwMCBaIi8+CiAgPC9nPgogIDxnIGZpbGw9IiMxMTFmMzAiIG9wYWNpdHk9IjAuOSI+CiAgICA8cGF0aCBkPSJNMCAxMTgwIFExMjAgMTEzMCAyNDAgMTE4MCBUNDgwIDExODAgVDcyMCAxMTgwIEw4MDAgMTE4MCBMODAwIDE2MDAgTDAgMTYwMCBaIi8+CiAgPC9nPgogIDxnIGZpbGw9IiMxNjI4M2MiPgogICAgPHBhdGggZD0iTTAgMTMwMCBRMTUwIDEyNDAgMzAwIDEzMDAgVDYwMCAxMzAwIFQ4MDAgMTI5MCBMODAwIDE2MDAgTDAgMTYwMCBaIi8+CiAgPC9nPgogIDxnIHN0cm9rZT0iI2NmZDhkZSIgc3Ryb2tlLXdpZHRoPSIzIiBmaWxsPSJub25lIiBvcGFjaXR5PSIwLjMiPgogICAgPHBhdGggZD0iTTQwIDk1MCBxMzAgLTIwIDYwIDAgdDYwIDAiLz4KICAgIDxwYXRoIGQ9Ik02MDAgMTAwMCBxMzAgLTIwIDYwIDAgdDYwIDAiLz4KICAgIDxwYXRoIGQ9Ik02NTAgODcwIHEzMCAtMjAgNjAgMCB0NjAgMCIvPgogIDwvZz4KPC9zdmc+Cg==", credit: "Noah's Ark & the Flood — Genesis 7-8" },
+  { file: "data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgODAwIDE2MDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CiAgPGRlZnM+CiAgICA8bGluZWFyR3JhZGllbnQgaWQ9ImciIHgxPSIwIiB5MT0iMCIgeDI9IjAiIHkyPSIxIj4KICAgICAgPHN0b3Agb2Zmc2V0PSIwJSIgc3RvcC1jb2xvcj0iIzhmZDNkOCIvPgogICAgICA8c3RvcCBvZmZzZXQ9IjMwJSIgc3RvcC1jb2xvcj0iIzNjOTNhOCIvPgogICAgICA8c3RvcCBvZmZzZXQ9IjYwJSIgc3RvcC1jb2xvcj0iIzFjNWY3YSIvPgogICAgICA8c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiMwYzJjNDIiLz4KICAgIDwvbGluZWFyR3JhZGllbnQ+CiAgICA8bGluZWFyR3JhZGllbnQgaWQ9IndhbGwiIHgxPSIwIiB5MT0iMCIgeDI9IjEiIHkyPSIwIj4KICAgICAgPHN0b3Agb2Zmc2V0PSIwJSIgc3RvcC1jb2xvcj0iIzBkNGE2MyIvPgogICAgICA8c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiMxNDZkOGUiLz4KICAgIDwvbGluZWFyR3JhZGllbnQ+CiAgPC9kZWZzPgogIDxyZWN0IHdpZHRoPSI4MDAiIGhlaWdodD0iMTYwMCIgZmlsbD0idXJsKCNnKSIvPgogIDxwYXRoIGQ9Ik0wIDUwMCBRNDAgMzAwIDAgNjAgTDAgMCBMMzAwIDAgUTI2MCA0MDAgMjgwIDkwMCBRMjYwIDEyMDAgMjAwIDE2MDAgTDAgMTYwMCBaIiBmaWxsPSJ1cmwoI3dhbGwpIiBvcGFjaXR5PSIwLjkyIi8+CiAgPHBhdGggZD0iTTgwMCA1MDAgUTc2MCAzMDAgODAwIDYwIEw4MDAgMCBMNTAwIDAgUTU0MCA0MDAgNTIwIDkwMCBRNTQwIDEyMDAgNjAwIDE2MDAgTDgwMCAxNjAwIFoiIGZpbGw9InVybCgjd2FsbCkiIG9wYWNpdHk9IjAuOTIiLz4KICA8ZyBmaWxsPSIjZmZmZmZmIiBvcGFjaXR5PSIwLjUiPgogICAgPHBhdGggZD0iTTI4MCAyMDAgcTIwIDQwIDAgODAiLz4KICAgIDxjaXJjbGUgY3g9IjI3MCIgY3k9IjI2MCIgcj0iNSIvPgogICAgPGNpcmNsZSBjeD0iMjkwIiBjeT0iNDIwIiByPSI0Ii8+CiAgICA8Y2lyY2xlIGN4PSIyNjAiIGN5PSI2MjAiIHI9IjUiLz4KICAgIDxjaXJjbGUgY3g9IjMwMCIgY3k9IjgyMCIgcj0iNCIvPgogICAgPGNpcmNsZSBjeD0iNTIwIiBjeT0iMzAwIiByPSI1Ii8+CiAgICA8Y2lyY2xlIGN4PSI1MDAiIGN5PSI1MDAiIHI9IjQiLz4KICAgIDxjaXJjbGUgY3g9IjUzMCIgY3k9IjcwMCIgcj0iNSIvPgogICAgPGNpcmNsZSBjeD0iNTEwIiBjeT0iOTAwIiByPSI0Ii8+CiAgPC9nPgogIDxwYXRoIGQ9Ik0zMDAgMTYwMCBRNDAwIDEyNTAgNTAwIDE2MDAgWiIgZmlsbD0iI2Q5YzQ4YSIgb3BhY2l0eT0iMC44NSIvPgogIDxnIGZpbGw9IiM4YTc0NDIiIG9wYWNpdHk9IjAuNiI+CiAgICA8ZWxsaXBzZSBjeD0iMzcwIiBjeT0iMTUwMCIgcng9IjEwIiByeT0iNCIvPgogICAgPGVsbGlwc2UgY3g9IjQxMCIgY3k9IjE0NTAiIHJ4PSIxMCIgcnk9IjQiLz4KICAgIDxlbGxpcHNlIGN4PSIzOTAiIGN5PSIxNDAwIiByeD0iMTAiIHJ5PSI0Ii8+CiAgICA8ZWxsaXBzZSBjeD0iNDIwIiBjeT0iMTU1MCIgcng9IjEwIiByeT0iNCIvPgogIDwvZz4KICA8ZyBmaWxsPSIjZThmNmY4IiBvcGFjaXR5PSIwLjQiPgogICAgPGNpcmNsZSBjeD0iMTIwIiBjeT0iOTAiIHI9IjIiLz4KICAgIDxjaXJjbGUgY3g9IjY1MCIgY3k9IjEyMCIgcj0iMiIvPgogICAgPGNpcmNsZSBjeD0iNzAwIiBjeT0iMjAwIiByPSIxLjUiLz4KICAgIDxjaXJjbGUgY3g9IjgwIiBjeT0iMjIwIiByPSIxLjUiLz4KICA8L2c+Cjwvc3ZnPgo=", credit: "Crossing the Red Sea — Exodus 14" },
+  { file: "data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgODAwIDE2MDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CiAgPGRlZnM+CiAgICA8bGluZWFyR3JhZGllbnQgaWQ9ImciIHgxPSIwIiB5MT0iMCIgeDI9IjAiIHkyPSIxIj4KICAgICAgPHN0b3Agb2Zmc2V0PSIwJSIgc3RvcC1jb2xvcj0iI2Y2YjI2YiIvPgogICAgICA8c3RvcCBvZmZzZXQ9IjM1JSIgc3RvcC1jb2xvcj0iI2Q5N2E1YSIvPgogICAgICA8c3RvcCBvZmZzZXQ9IjY1JSIgc3RvcC1jb2xvcj0iIzdhNGE2YiIvPgogICAgICA8c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiMyYzFmM2QiLz4KICAgIDwvbGluZWFyR3JhZGllbnQ+CiAgPC9kZWZzPgogIDxyZWN0IHdpZHRoPSI4MDAiIGhlaWdodD0iMTYwMCIgZmlsbD0idXJsKCNnKSIvPgogIDxjaXJjbGUgY3g9IjU4MCIgY3k9IjM0MCIgcj0iOTAiIGZpbGw9IiNmZmYyZDYiIG9wYWNpdHk9IjAuODUiLz4KICA8ZyBmaWxsPSIjNDAyYTNhIiBvcGFjaXR5PSIwLjkiPgogICAgPHBhdGggZD0iTTAgOTAwIFExNTAgODIwIDMwMCA5MDAgVDYwMCA5MDAgVDgwMCA4ODAgTDgwMCAxNjAwIEwwIDE2MDAgWiIvPgogIDwvZz4KICA8ZyBmaWxsPSIjMmExYzJjIj4KICAgIDxwYXRoIGQ9Ik0wIDEwMjAgUTIwMCA5NDAgNDAwIDEwMjAgVDgwMCAxMDEwIEw4MDAgMTYwMCBMMCAxNjAwIFoiLz4KICA8L2c+CiAgPGcgZmlsbD0iIzFjMTIyMCI+CiAgICA8cGF0aCBkPSJNMCAxMTgwIFEyMjAgMTExMCA0NDAgMTE4MCBUODAwIDExNjAgTDgwMCAxNjAwIEwwIDE2MDAgWiIvPgogIDwvZz4KICA8IS0tIEdvbGlhdGggc2lsaG91ZXR0ZSAtLT4KICA8ZyBmaWxsPSIjMTUwZTE4Ij4KICAgIDxyZWN0IHg9IjQ3MCIgeT0iNzYwIiB3aWR0aD0iMjYiIGhlaWdodD0iMTQwIiByeD0iOCIvPgogICAgPGNpcmNsZSBjeD0iNDgzIiBjeT0iNzQwIiByPSIyMCIvPgogICAgPHBhdGggZD0iTTQ0MCA4MDAgTDQ0MCA5MDAgTDUyNSA5MDAgTDUyNSA4MDAgWiIvPgogICAgPHJlY3QgeD0iNDMwIiB5PSI4MTAiIHdpZHRoPSIyMCIgaGVpZ2h0PSI3MCIgcng9IjgiLz4KICAgIDxyZWN0IHg9IjUxNiIgeT0iODAwIiB3aWR0aD0iMjAiIGhlaWdodD0iOTAiIHJ4PSI4Ii8+CiAgICA8cmVjdCB4PSI0NjAiIHk9IjkwMCIgd2lkdGg9IjIwIiBoZWlnaHQ9IjkwIiByeD0iOCIvPgogICAgPHJlY3QgeD0iNDkwIiB5PSI5MDAiIHdpZHRoPSIyMCIgaGVpZ2h0PSI5MCIgcng9IjgiLz4KICA8L2c+CiAgPCEtLSBEYXZpZCBzaWxob3VldHRlIHdpdGggc2xpbmcgLS0+CiAgPGcgZmlsbD0iIzE1MGUxOCI+CiAgICA8Y2lyY2xlIGN4PSIzMDAiIGN5PSIxMDEwIiByPSIxMyIvPgogICAgPHBhdGggZD0iTTI4OCAxMDIzIEwyODggMTA4MCBMMzEyIDEwODAgTDMxMiAxMDIzIFoiLz4KICAgIDxyZWN0IHg9IjI4MCIgeT0iMTAzMCIgd2lkdGg9IjE0IiBoZWlnaHQ9IjU1IiByeD0iNiIvPgogICAgPHJlY3QgeD0iMzA2IiB5PSIxMDMwIiB3aWR0aD0iMTQiIGhlaWdodD0iNTUiIHJ4PSI2Ii8+CiAgICA8cmVjdCB4PSIyOTAiIHk9IjEwODAiIHdpZHRoPSIxNCIgaGVpZ2h0PSI2MCIgcng9IjYiLz4KICAgIDxyZWN0IHg9IjMwNiIgeT0iMTA4MCIgd2lkdGg9IjE0IiBoZWlnaHQ9IjYwIiByeD0iNiIvPgogICAgPHBhdGggZD0iTTMyMCAxMDE1IFEzNjAgOTkwIDM4MCAxMDMwIiBzdHJva2U9IiMxNTBlMTgiIHN0cm9rZS13aWR0aD0iNCIgZmlsbD0ibm9uZSIvPgogIDwvZz4KPC9zdmc+Cg==", credit: "David and Goliath — 1 Samuel 17" },
+  { file: "data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgODAwIDE2MDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CiAgPGRlZnM+CiAgICA8bGluZWFyR3JhZGllbnQgaWQ9ImciIHgxPSIwIiB5MT0iMCIgeDI9IjAiIHkyPSIxIj4KICAgICAgPHN0b3Agb2Zmc2V0PSIwJSIgc3RvcC1jb2xvcj0iI2ZiZTNhMyIvPgogICAgICA8c3RvcCBvZmZzZXQ9IjMwJSIgc3RvcC1jb2xvcj0iI2YwYjA2YSIvPgogICAgICA8c3RvcCBvZmZzZXQ9IjYwJSIgc3RvcC1jb2xvcj0iIzZmOGY1YSIvPgogICAgICA8c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiMyODM4MWYiLz4KICAgIDwvbGluZWFyR3JhZGllbnQ+CiAgPC9kZWZzPgogIDxyZWN0IHdpZHRoPSI4MDAiIGhlaWdodD0iMTYwMCIgZmlsbD0idXJsKCNnKSIvPgogIDxjaXJjbGUgY3g9IjYyMCIgY3k9IjI2MCIgcj0iNzAiIGZpbGw9IiNmZmY2ZGQiIG9wYWNpdHk9IjAuOCIvPgogIDxnIGZpbGw9IiMzYzRkMmMiIG9wYWNpdHk9IjAuOSI+CiAgICA8cGF0aCBkPSJNMCA4MjAgUTIwMCA3NDAgNDAwIDgyMCBUODAwIDgwMCBMODAwIDE2MDAgTDAgMTYwMCBaIi8+CiAgPC9nPgogIDxnIGZpbGw9IiMyYzNhMjAiPgogICAgPHBhdGggZD0iTTAgOTgwIFEyMjAgOTAwIDQ0MCA5ODAgVDgwMCA5NjAgTDgwMCAxNjAwIEwwIDE2MDAgWiIvPgogIDwvZz4KICA8ZyBmaWxsPSIjMWMyNjBmIj4KICAgIDxwYXRoIGQ9Ik0wIDExNTAgUTI0MCAxMDgwIDQ4MCAxMTUwIFQ4MDAgMTEzMCBMODAwIDE2MDAgTDAgMTYwMCBaIi8+CiAgPC9nPgogIDwhLS0gc2hlcGhlcmQgd2l0aCBzdGFmZiAtLT4KICA8ZyBmaWxsPSIjMTQxYzBjIj4KICAgIDxjaXJjbGUgY3g9IjIwMCIgY3k9IjEwNDAiIHI9IjE1Ii8+CiAgICA8cGF0aCBkPSJNMTg1IDEwNTggTDE4NSAxMTMwIEwyMTUgMTEzMCBMMjE1IDEwNTggWiIvPgogICAgPHJlY3QgeD0iMTk1IiB5PSIxMTMwIiB3aWR0aD0iMTIiIGhlaWdodD0iNjAiIHJ4PSI1Ii8+CiAgICA8cmVjdCB4PSIyMTAiIHk9IjExMzAiIHdpZHRoPSIxMiIgaGVpZ2h0PSI2MCIgcng9IjUiLz4KICAgIDxwYXRoIGQ9Ik0yMjUgMTAyMCBMMjI1IDExNTAiIHN0cm9rZT0iIzE0MWMwYyIgc3Ryb2tlLXdpZHRoPSI1Ii8+CiAgICA8cGF0aCBkPSJNMjI1IDEwMjAgUTI0NSAxMDA1IDI0MCAxMDMwIiBzdHJva2U9IiMxNDFjMGMiIHN0cm9rZS13aWR0aD0iNSIgZmlsbD0ibm9uZSIvPgogIDwvZz4KICA8IS0tIHNoZWVwIC0tPgogIDxnIGZpbGw9IiMxNDFjMGMiPgogICAgPGVsbGlwc2UgY3g9IjMzMCIgY3k9IjEyMDAiIHJ4PSIzNCIgcnk9IjIwIi8+CiAgICA8Y2lyY2xlIGN4PSIzNjAiIGN5PSIxMTk1IiByPSIxMiIvPgogICAgPGVsbGlwc2UgY3g9IjQ3MCIgY3k9IjEyNDAiIHJ4PSIzMCIgcnk9IjE4Ii8+CiAgICA8Y2lyY2xlIGN4PSI0OTciIGN5PSIxMjM2IiByPSIxMSIvPgogICAgPGVsbGlwc2UgY3g9IjU4MCIgY3k9IjEyMTAiIHJ4PSIyOCIgcnk9IjE3Ii8+CiAgICA8Y2lyY2xlIGN4PSI2MDUiIGN5PSIxMjA2IiByPSIxMCIvPgogIDwvZz4KPC9zdmc+Cg==", credit: "The Good Shepherd — Psalm 23" },
+  { file: "data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgODAwIDE2MDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CiAgPGRlZnM+CiAgICA8bGluZWFyR3JhZGllbnQgaWQ9ImciIHgxPSIwIiB5MT0iMCIgeDI9IjAiIHkyPSIxIj4KICAgICAgPHN0b3Agb2Zmc2V0PSIwJSIgc3RvcC1jb2xvcj0iIzBjMTIzMCIvPgogICAgICA8c3RvcCBvZmZzZXQ9IjQ1JSIgc3RvcC1jb2xvcj0iIzE2MWE0MiIvPgogICAgICA8c3RvcCBvZmZzZXQ9Ijc1JSIgc3RvcC1jb2xvcj0iIzJhMjM1MCIvPgogICAgICA8c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiMzYTI0NDAiLz4KICAgIDwvbGluZWFyR3JhZGllbnQ+CiAgPC9kZWZzPgogIDxyZWN0IHdpZHRoPSI4MDAiIGhlaWdodD0iMTYwMCIgZmlsbD0idXJsKCNnKSIvPgogIDxnIHN0cm9rZT0iI2ZmZTliMCIgc3Ryb2tlLXdpZHRoPSIyIiBvcGFjaXR5PSIwLjUiPgogICAgPGxpbmUgeDE9IjQyMCIgeTE9IjI2MCIgeDI9IjQyMCIgeTI9IjEyMCIvPgogICAgPGxpbmUgeDE9IjQyMCIgeTE9IjI2MCIgeDI9IjUzMCIgeTI9IjE4MCIvPgogICAgPGxpbmUgeDE9IjQyMCIgeTE9IjI2MCIgeDI9IjYyMCIgeTI9IjI2MCIvPgogICAgPGxpbmUgeDE9IjQyMCIgeTE9IjI2MCIgeDI9IjMxMCIgeTI9IjE4MCIvPgogICAgPGxpbmUgeDE9IjQyMCIgeTE9IjI2MCIgeDI9IjIyMCIgeTI9IjI2MCIvPgogICAgPGxpbmUgeDE9IjQyMCIgeTE9IjI2MCIgeDI9IjUwMCIgeTI9IjMzMCIvPgogICAgPGxpbmUgeDE9IjQyMCIgeTE9IjI2MCIgeDI9IjM0MCIgeTI9IjMzMCIvPgogIDwvZz4KICA8Y2lyY2xlIGN4PSI0MjAiIGN5PSIyNjAiIHI9IjMwIiBmaWxsPSIjZmZmOGUwIi8+CiAgPGNpcmNsZSBjeD0iNDIwIiBjeT0iMjYwIiByPSI1NSIgZmlsbD0iI2ZmZTliMCIgb3BhY2l0eT0iMC4zNSIvPgogIDxnIGZpbGw9IiNmZmZmZmYiPgogICAgPGNpcmNsZSBjeD0iMTAwIiBjeT0iMTUwIiByPSIyIiBvcGFjaXR5PSIwLjciLz4KICAgIDxjaXJjbGUgY3g9IjE3MCIgY3k9IjMzMCIgcj0iMS42IiBvcGFjaXR5PSIwLjYiLz4KICAgIDxjaXJjbGUgY3g9IjcwMCIgY3k9IjE0MCIgcj0iMiIgb3BhY2l0eT0iMC43Ii8+CiAgICA8Y2lyY2xlIGN4PSI2NTAiIGN5PSIzODAiIHI9IjEuNiIgb3BhY2l0eT0iMC41Ii8+CiAgICA8Y2lyY2xlIGN4PSI2MCIgY3k9IjUwMCIgcj0iMS42IiBvcGFjaXR5PSIwLjUiLz4KICAgIDxjaXJjbGUgY3g9Ijc0MCIgY3k9IjUyMCIgcj0iMS44IiBvcGFjaXR5PSIwLjUiLz4KICAgIDxjaXJjbGUgY3g9IjI1MCIgY3k9IjkwIiByPSIxLjQiIG9wYWNpdHk9IjAuNSIvPgogICAgPGNpcmNsZSBjeD0iNTYwIiBjeT0iOTAiIHI9IjEuNCIgb3BhY2l0eT0iMC41Ii8+CiAgPC9nPgogIDxnIGZpbGw9IiMwODA5MWMiIG9wYWNpdHk9IjAuOSI+CiAgICA8cGF0aCBkPSJNMCAxMDUwIFExNTAgOTkwIDMwMCAxMDUwIFQ2MDAgMTA0MCBUODAwIDEwMzAgTDgwMCAxNjAwIEwwIDE2MDAgWiIvPgogIDwvZz4KICA8IS0tIHN0YWJsZSAtLT4KICA8ZyBmaWxsPSIjMDUwNjE0Ij4KICAgIDxwYXRoIGQ9Ik0yNjAgMTI1MCBMNDAwIDExMjAgTDU0MCAxMjUwIFoiLz4KICAgIDxyZWN0IHg9IjI4MCIgeT0iMTI1MCIgd2lkdGg9IjI0MCIgaGVpZ2h0PSIyMzAiIC8+CiAgICA8cmVjdCB4PSIyMzAiIHk9IjEyNjAiIHdpZHRoPSIzMCIgaGVpZ2h0PSIyMjAiLz4KICAgIDxyZWN0IHg9IjU0MCIgeT0iMTI2MCIgd2lkdGg9IjMwIiBoZWlnaHQ9IjIyMCIvPgogIDwvZz4KICA8cGF0aCBkPSJNMzgwIDE0OTAgUTQwMCAxNDQwIDQyMCAxNDkwIEw0MjAgMTYwMCBMMzgwIDE2MDAgWiIgZmlsbD0iIzBjMGYyMiIvPgo8L3N2Zz4K", credit: "The Nativity — Luke 2" },
+  { file: "data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgODAwIDE2MDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CiAgPGRlZnM+CiAgICA8bGluZWFyR3JhZGllbnQgaWQ9ImciIHgxPSIwIiB5MT0iMCIgeDI9IjAiIHkyPSIxIj4KICAgICAgPHN0b3Agb2Zmc2V0PSIwJSIgc3RvcC1jb2xvcj0iI2NmZTZmMCIvPgogICAgICA8c3RvcCBvZmZzZXQ9IjM1JSIgc3RvcC1jb2xvcj0iI2YzY2Y5YSIvPgogICAgICA8c3RvcCBvZmZzZXQ9IjY1JSIgc3RvcC1jb2xvcj0iI2M5OGE2YiIvPgogICAgICA8c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiM0YTNhM2YiLz4KICAgIDwvbGluZWFyR3JhZGllbnQ+CiAgPC9kZWZzPgogIDxyZWN0IHdpZHRoPSI4MDAiIGhlaWdodD0iMTYwMCIgZmlsbD0idXJsKCNnKSIvPgogIDxjaXJjbGUgY3g9IjQwMCIgY3k9IjMwMCIgcj0iODAiIGZpbGw9IiNmZmY2ZTAiIG9wYWNpdHk9IjAuNyIvPgogIDxnIGZpbGw9IiM0YTNhM2YiIG9wYWNpdHk9IjAuODUiPgogICAgPHBhdGggZD0iTTAgNzAwIEwyNjAgNDIwIEw0MjAgNjIwIEw1NjAgMzgwIEw4MDAgNzAwIEw4MDAgMTAwMCBMMCAxMDAwIFoiLz4KICA8L2c+CiAgPGcgZmlsbD0iIzNhMmMzMCI+CiAgICA8cGF0aCBkPSJNMCA5MDAgUTIwMCA4MzAgNDAwIDkwMCBUODAwIDg4MCBMODAwIDE2MDAgTDAgMTYwMCBaIi8+CiAgPC9nPgogIDxnIGZpbGw9IiMyNDFhMWQiPgogICAgPHBhdGggZD0iTTAgMTA4MCBRMjIwIDEwMTAgNDQwIDEwODAgVDgwMCAxMDYwIEw4MDAgMTYwMCBMMCAxNjAwIFoiLz4KICA8L2c+CiAgPCEtLSB0ZWFjaGVyIGZpZ3VyZSAtLT4KICA8ZyBmaWxsPSIjMTYwZjExIj4KICAgIDxjaXJjbGUgY3g9IjQwMCIgY3k9IjkyMCIgcj0iMTYiLz4KICAgIDxwYXRoIGQ9Ik0zODIgOTQwIEwzODIgMTAzMCBMNDE4IDEwMzAgTDQxOCA5NDAgWiIvPgogIDwvZz4KICA8IS0tIHNlYXRlZCBjcm93ZCBkb3RzIC0tPgogIDxnIGZpbGw9IiMxNjBmMTEiIG9wYWNpdHk9IjAuODUiPgogICAgPGVsbGlwc2UgY3g9IjMwMCIgY3k9IjExMjAiIHJ4PSIxNCIgcnk9IjEwIi8+CiAgICA8ZWxsaXBzZSBjeD0iMzQwIiBjeT0iMTEzMCIgcng9IjE0IiByeT0iMTAiLz4KICAgIDxlbGxpcHNlIGN4PSIzODAiIGN5PSIxMTM1IiByeD0iMTQiIHJ5PSIxMCIvPgogICAgPGVsbGlwc2UgY3g9IjQ0MCIgY3k9IjExMzAiIHJ4PSIxNCIgcnk9IjEwIi8+CiAgICA8ZWxsaXBzZSBjeD0iNDgwIiBjeT0iMTEyMiIgcng9IjE0IiByeT0iMTAiLz4KICAgIDxlbGxpcHNlIGN4PSIyNjAiIGN5PSIxMTUwIiByeD0iMTQiIHJ5PSIxMCIvPgogICAgPGVsbGlwc2UgY3g9IjUyMCIgY3k9IjExNTAiIHJ4PSIxNCIgcnk9IjEwIi8+CiAgICA8ZWxsaXBzZSBjeD0iMjIwIiBjeT0iMTE3NSIgcng9IjE0IiByeT0iMTAiLz4KICAgIDxlbGxpcHNlIGN4PSI1NjAiIGN5PSIxMTc1IiByeD0iMTQiIHJ5PSIxMCIvPgogIDwvZz4KPC9zdmc+Cg==", credit: "The Sermon on the Mount — Matthew 5" },
+  { file: "data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgODAwIDE2MDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CiAgPGRlZnM+CiAgICA8bGluZWFyR3JhZGllbnQgaWQ9ImciIHgxPSIwIiB5MT0iMCIgeDI9IjAiIHkyPSIxIj4KICAgICAgPHN0b3Agb2Zmc2V0PSIwJSIgc3RvcC1jb2xvcj0iIzVjMjQzMCIvPgogICAgICA8c3RvcCBvZmZzZXQ9IjM1JSIgc3RvcC1jb2xvcj0iIzNkMWMzMyIvPgogICAgICA8c3RvcCBvZmZzZXQ9IjcwJSIgc3RvcC1jb2xvcj0iIzI0MTgzMCIvPgogICAgICA8c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiMwZTBhMTgiLz4KICAgIDwvbGluZWFyR3JhZGllbnQ+CiAgPC9kZWZzPgogIDxyZWN0IHdpZHRoPSI4MDAiIGhlaWdodD0iMTYwMCIgZmlsbD0idXJsKCNnKSIvPgogIDxjaXJjbGUgY3g9IjQwMCIgY3k9IjUyMCIgcj0iMTEwIiBmaWxsPSIjYzY1YTNmIiBvcGFjaXR5PSIwLjU1Ii8+CiAgPGNpcmNsZSBjeD0iNDAwIiBjeT0iNTIwIiByPSIxNjAiIGZpbGw9IiNjNjVhM2YiIG9wYWNpdHk9IjAuMjUiLz4KICA8ZyBmaWxsPSIjMGUwYTE2IiBvcGFjaXR5PSIwLjkiPgogICAgPHBhdGggZD0iTTAgMTA1MCBRMjAwIDk3MCA0MDAgMTA1MCBUODAwIDEwMzAgTDgwMCAxNjAwIEwwIDE2MDAgWiIvPgogIDwvZz4KICA8ZyBmaWxsPSIjMDgwNTBkIj4KICAgIDxwYXRoIGQ9Ik0wIDEyMDAgUTIyMCAxMTMwIDQ0MCAxMjAwIFQ4MDAgMTE4MCBMODAwIDE2MDAgTDAgMTYwMCBaIi8+CiAgPC9nPgogIDwhLS0gdGhyZWUgY3Jvc3NlcyAtLT4KICA8ZyBmaWxsPSIjMDUwMzA4Ij4KICAgIDxyZWN0IHg9IjM5MiIgeT0iNTYwIiB3aWR0aD0iMTYiIGhlaWdodD0iMzMwIi8+CiAgICA8cmVjdCB4PSIzMzAiIHk9IjY1MCIgd2lkdGg9IjE1MCIgaGVpZ2h0PSIxNiIvPgogICAgPHJlY3QgeD0iMjMwIiB5PSI3MDAiIHdpZHRoPSIxMiIgaGVpZ2h0PSIyMzAiLz4KICAgIDxyZWN0IHg9IjE5NSIgeT0iNzYwIiB3aWR0aD0iODIiIGhlaWdodD0iMTIiLz4KICAgIDxyZWN0IHg9IjU2MCIgeT0iNzAwIiB3aWR0aD0iMTIiIGhlaWdodD0iMjMwIi8+CiAgICA8cmVjdCB4PSI1MjUiIHk9Ijc2MCIgd2lkdGg9IjgyIiBoZWlnaHQ9IjEyIi8+CiAgPC9nPgo8L3N2Zz4K", credit: "The Crucifixion — Matthew 27" },
+  { file: "data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgODAwIDE2MDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CiAgPGRlZnM+CiAgICA8bGluZWFyR3JhZGllbnQgaWQ9ImciIHgxPSIwIiB5MT0iMCIgeDI9IjAiIHkyPSIxIj4KICAgICAgPHN0b3Agb2Zmc2V0PSIwJSIgc3RvcC1jb2xvcj0iI2ZiZThjMCIvPgogICAgICA8c3RvcCBvZmZzZXQ9IjMwJSIgc3RvcC1jb2xvcj0iI2Y0YjA2YSIvPgogICAgICA8c3RvcCBvZmZzZXQ9IjYwJSIgc3RvcC1jb2xvcj0iI2E5Njc4YSIvPgogICAgICA8c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiMyYzIxNDAiLz4KICAgIDwvbGluZWFyR3JhZGllbnQ+CiAgPC9kZWZzPgogIDxyZWN0IHdpZHRoPSI4MDAiIGhlaWdodD0iMTYwMCIgZmlsbD0idXJsKCNnKSIvPgogIDxjaXJjbGUgY3g9IjQwMCIgY3k9IjQyMCIgcj0iMTMwIiBmaWxsPSIjZmZmNmRkIiBvcGFjaXR5PSIwLjg1Ii8+CiAgPGcgc3Ryb2tlPSIjZmZmMmNmIiBzdHJva2Utd2lkdGg9IjMiIG9wYWNpdHk9IjAuNCI+CiAgICA8bGluZSB4MT0iNDAwIiB5MT0iNDIwIiB4Mj0iNDAwIiB5Mj0iMjAwIi8+CiAgICA8bGluZSB4MT0iNDAwIiB5MT0iNDIwIiB4Mj0iNTgwIiB5Mj0iMjgwIi8+CiAgICA8bGluZSB4MT0iNDAwIiB5MT0iNDIwIiB4Mj0iMjIwIiB5Mj0iMjgwIi8+CiAgICA8bGluZSB4MT0iNDAwIiB5MT0iNDIwIiB4Mj0iNjIwIiB5Mj0iNDQwIi8+CiAgICA8bGluZSB4MT0iNDAwIiB5MT0iNDIwIiB4Mj0iMTgwIiB5Mj0iNDQwIi8+CiAgPC9nPgogIDxnIGZpbGw9IiMyNDFhMmUiIG9wYWNpdHk9IjAuOSI+CiAgICA8cGF0aCBkPSJNMCA5NTAgUTIwMCA4ODAgNDAwIDk1MCBUODAwIDkzMCBMODAwIDE2MDAgTDAgMTYwMCBaIi8+CiAgPC9nPgogIDxnIGZpbGw9IiMxODBmMjEiPgogICAgPHBhdGggZD0iTTAgMTEyMCBRMjIwIDEwNTAgNDQwIDExMjAgVDgwMCAxMTAwIEw4MDAgMTYwMCBMMCAxNjAwIFoiLz4KICA8L2c+CiAgPCEtLSB0b21iIGVudHJhbmNlIChkYXJrIGFyY2gpIC0tPgogIDxnPgogICAgPHBhdGggZD0iTTMwMCAxNjAwIEwzMDAgMTMwMCBRMzAwIDEyMDAgNDAwIDEyMDAgUTUwMCAxMjAwIDUwMCAxMzAwIEw1MDAgMTYwMCBaIiBmaWxsPSIjMGIwNzEyIi8+CiAgICA8Y2lyY2xlIGN4PSI1NjAiIGN5PSIxNDIwIiByPSI1NSIgZmlsbD0iIzhhN2E2MyIvPgogIDwvZz4KPC9zdmc+Cg==", credit: "The Resurrection — Matthew 28" },
+  { file: "data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgODAwIDE2MDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CiAgPGRlZnM+CiAgICA8bGluZWFyR3JhZGllbnQgaWQ9ImciIHgxPSIwIiB5MT0iMCIgeDI9IjAiIHkyPSIxIj4KICAgICAgPHN0b3Agb2Zmc2V0PSIwJSIgc3RvcC1jb2xvcj0iIzIzMmE0YSIvPgogICAgICA8c3RvcCBvZmZzZXQ9IjMwJSIgc3RvcC1jb2xvcj0iIzFiMjE0MCIvPgogICAgICA8c3RvcCBvZmZzZXQ9IjYwJSIgc3RvcC1jb2xvcj0iIzE0MTgzMCIvPgogICAgICA8c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiMwYTBjMWMiLz4KICAgIDwvbGluZWFyR3JhZGllbnQ+CiAgPC9kZWZzPgogIDxyZWN0IHdpZHRoPSI4MDAiIGhlaWdodD0iMTYwMCIgZmlsbD0idXJsKCNnKSIvPgoKICA8IS0tIG1vb24gLS0+CiAgPGNpcmNsZSBjeD0iNTgwIiBjeT0iMjMwIiByPSI3MCIgZmlsbD0iI2VlZjFlNiIgb3BhY2l0eT0iMC45Ii8+CiAgPGNpcmNsZSBjeD0iNTgwIiBjeT0iMjMwIiByPSIxMDUiIGZpbGw9IiNjOWQzYzAiIG9wYWNpdHk9IjAuMTgiLz4KCiAgPCEtLSBzdGFycyAtLT4KICA8ZyBmaWxsPSIjZmZmZmZmIj4KICAgIDxjaXJjbGUgY3g9IjkwIiBjeT0iMTIwIiByPSIxLjgiIG9wYWNpdHk9IjAuNyIvPgogICAgPGNpcmNsZSBjeD0iMTUwIiBjeT0iMjYwIiByPSIxLjQiIG9wYWNpdHk9IjAuNSIvPgogICAgPGNpcmNsZSBjeD0iMjUwIiBjeT0iODAiIHI9IjEuNiIgb3BhY2l0eT0iMC42Ii8+CiAgICA8Y2lyY2xlIGN4PSI3MDAiIGN5PSIxNTAiIHI9IjEuNiIgb3BhY2l0eT0iMC42Ii8+CiAgICA8Y2lyY2xlIGN4PSI2MCIgY3k9IjM0MCIgcj0iMS40IiBvcGFjaXR5PSIwLjUiLz4KICAgIDxjaXJjbGUgY3g9IjM4MCIgY3k9IjYwIiByPSIxLjQiIG9wYWNpdHk9IjAuNSIvPgogICAgPGNpcmNsZSBjeD0iNDQwIiBjeT0iMTgwIiByPSIxLjIiIG9wYWNpdHk9IjAuNCIvPgogICAgPGNpcmNsZSBjeD0iMjAwIiBjeT0iMjAwIiByPSIxLjIiIG9wYWNpdHk9IjAuNCIvPgogIDwvZz4KCiAgPCEtLSBkaXN0YW50IGhpbGwgLS0+CiAgPGcgZmlsbD0iIzBkMTAyNCIgb3BhY2l0eT0iMC45Ij4KICAgIDxwYXRoIGQ9Ik0wIDc4MCBRMjAwIDcyMCA0MDAgNzgwIFQ4MDAgNzYwIEw4MDAgMTYwMCBMMCAxNjAwIFoiLz4KICA8L2c+CgogIDwhLS0gb2xpdmUgdHJlZSwgbGVmdCAtLT4KICA8ZyBmaWxsPSIjMDcwODE1Ij4KICAgIDxwYXRoIGQ9Ik0xMjAgMTE4MCBRMTEwIDEwMDAgMTUwIDg4MCBRMTcwIDgzMCAxNDAgNzYwIiBzdHJva2U9IiMwNzA4MTUiIHN0cm9rZS13aWR0aD0iMTQiIGZpbGw9Im5vbmUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgogICAgPHBhdGggZD0iTTE1MCA4ODAgUTkwIDgzMCA2MCA3NjAiIHN0cm9rZT0iIzA3MDgxNSIgc3Ryb2tlLXdpZHRoPSI5IiBmaWxsPSJub25lIiBzdHJva2UtbGluZWNhcD0icm91bmQiLz4KICAgIDxwYXRoIGQ9Ik0xNTAgOTAwIFEyMTAgODUwIDI1MCA4MDAiIHN0cm9rZT0iIzA3MDgxNSIgc3Ryb2tlLXdpZHRoPSI5IiBmaWxsPSJub25lIiBzdHJva2UtbGluZWNhcD0icm91bmQiLz4KICAgIDxlbGxpcHNlIGN4PSIxMDAiIGN5PSI3NDAiIHJ4PSIxMTAiIHJ5PSI4MCIvPgogICAgPGVsbGlwc2UgY3g9IjIwMCIgY3k9Ijc3MCIgcng9IjkwIiByeT0iNjUiLz4KICAgIDxlbGxpcHNlIGN4PSI2MCIgY3k9IjgwMCIgcng9IjgwIiByeT0iNjAiLz4KICA8L2c+CgogIDwhLS0gb2xpdmUgdHJlZSwgcmlnaHQgLS0+CiAgPGcgZmlsbD0iIzA3MDgxNSI+CiAgICA8cGF0aCBkPSJNNjkwIDEyMjAgUTcwNSAxMDIwIDY2NSA5MDAgUTY0NSA4NDAgNjc1IDc3MCIgc3Ryb2tlPSIjMDcwODE1IiBzdHJva2Utd2lkdGg9IjE1IiBmaWxsPSJub25lIiBzdHJva2UtbGluZWNhcD0icm91bmQiLz4KICAgIDxwYXRoIGQ9Ik02NjUgOTAwIFE3MzAgODUwIDc2MCA3OTAiIHN0cm9rZT0iIzA3MDgxNSIgc3Ryb2tlLXdpZHRoPSI5IiBmaWxsPSJub25lIiBzdHJva2UtbGluZWNhcD0icm91bmQiLz4KICAgIDxwYXRoIGQ9Ik02NjUgOTIwIFE2MDAgODgwIDU1NSA4MzAiIHN0cm9rZT0iIzA3MDgxNSIgc3Ryb2tlLXdpZHRoPSI5IiBmaWxsPSJub25lIiBzdHJva2UtbGluZWNhcD0icm91bmQiLz4KICAgIDxlbGxpcHNlIGN4PSI3MjAiIGN5PSI3NTAiIHJ4PSIxMTUiIHJ5PSI4NSIvPgogICAgPGVsbGlwc2UgY3g9IjYxMCIgY3k9Ijc5MCIgcng9IjkwIiByeT0iNjUiLz4KICAgIDxlbGxpcHNlIGN4PSI3NzAiIGN5PSI4MjAiIHJ4PSI3NSIgcnk9IjU1Ii8+CiAgPC9nPgoKICA8IS0tIGdhcmRlbiBncm91bmQgLS0+CiAgPGcgZmlsbD0iIzA4MGExOCI+CiAgICA8cGF0aCBkPSJNMCAxMjgwIFEyMDAgMTIzMCA0MDAgMTI4MCBUODAwIDEyNjAgTDgwMCAxNjAwIEwwIDE2MDAgWiIvPgogIDwvZz4KICA8ZyBmaWxsPSIjMDUwNjEyIj4KICAgIDxwYXRoIGQ9Ik0wIDE0MjAgUTIyMCAxMzcwIDQ0MCAxNDIwIFQ4MDAgMTQwMCBMODAwIDE2MDAgTDAgMTYwMCBaIi8+CiAgPC9nPgoKICA8IS0tIHJvY2sgYmVzaWRlIHRoZSBwcmF5aW5nIGZpZ3VyZSAtLT4KICA8ZyBmaWxsPSIjMDUwNjEyIj4KICAgIDxlbGxpcHNlIGN4PSI1NjAiIGN5PSIxMzMwIiByeD0iOTAiIHJ5PSI0NiIvPgogIDwvZz4KCiAgPCEtLSBrbmVlbGluZyBmaWd1cmUsIHByYXlpbmcsIGZhY2luZyB0aGUgcm9jay9tb29uIC0tPgogIDxnIGZpbGw9IiMwNDA1MGQiPgogICAgPCEtLSBoZWFkLCBib3dlZCBzbGlnaHRseSAtLT4KICAgIDxjaXJjbGUgY3g9IjQxOCIgY3k9IjExODgiIHI9IjI2Ii8+CiAgICA8IS0tIHJvYmUgYm9keSwga25lZWxpbmcgc2lsaG91ZXR0ZSAtLT4KICAgIDxwYXRoIGQ9Ik0zNzAgMTIxMAogICAgICAgICAgICAgUTM2OCAxMjQwIDM3OCAxMjcwCiAgICAgICAgICAgICBMMzcyIDEzNDAKICAgICAgICAgICAgIFEzNzIgMTM3MCA0MDAgMTM4MAogICAgICAgICAgICAgTDQ3MCAxMzgwCiAgICAgICAgICAgICBRNDg1IDEzNzAgNDgwIDEzNDUKICAgICAgICAgICAgIEw0NjggMTI3MAogICAgICAgICAgICAgUTQ3OCAxMjM1IDQ2MiAxMjA4CiAgICAgICAgICAgICBRNDQwIDExOTIgNDE4IDExOTQKICAgICAgICAgICAgIFEzOTIgMTE5NCAzNzAgMTIxMCBaIi8+CiAgICA8IS0tIGFybSByZWFjaGluZyB0b3dhcmQgdGhlIHJvY2ssIGhhbmRzIGNsYXNwZWQgaW4gcHJheWVyIC0tPgogICAgPHBhdGggZD0iTTQ2MiAxMjMwIFE1MDAgMTI1MCA1MjUgMTI5MCBRNTM1IDEzMDUgNTIwIDEzMTUgUTUwNSAxMzIwIDQ5NSAxMzA1IFE0NzIgMTI3MCA0NDggMTI0OCBaIi8+CiAgICA8ZWxsaXBzZSBjeD0iNTIwIiBjeT0iMTMwOCIgcng9IjE0IiByeT0iMTAiLz4KICA8L2c+CgogIDwhLS0gZmFpbnQgc2xlZXBpbmcgZGlzY2lwbGVzIGluIHRoZSBkaXN0YW5jZSAtLT4KICA8ZyBmaWxsPSIjMGEwYzFjIiBvcGFjaXR5PSIwLjg1Ij4KICAgIDxlbGxpcHNlIGN4PSIxNTAiIGN5PSIxNDcwIiByeD0iNTUiIHJ5PSIyMiIvPgogICAgPGNpcmNsZSBjeD0iOTUiIGN5PSIxNDYyIiByPSIxNiIvPgogICAgPGVsbGlwc2UgY3g9IjI2MCIgY3k9IjE0OTAiIHJ4PSI1MCIgcnk9IjIwIi8+CiAgICA8Y2lyY2xlIGN4PSIzMTUiIGN5PSIxNDgzIiByPSIxNSIvPgogIDwvZz4KPC9zdmc+Cg==", credit: "Jesus Prays in Gethsemane — Matthew 26:36-46" },
+  { file: "data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgODAwIDE2MDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CiAgPGRlZnM+CiAgICA8cmFkaWFsR3JhZGllbnQgaWQ9Imdsb3ciIGN4PSI1MCUiIGN5PSI1NSUiIHI9IjYwJSI+CiAgICAgIDxzdG9wIG9mZnNldD0iMCUiIHN0b3AtY29sb3I9IiNmZmY2ZDgiLz4KICAgICAgPHN0b3Agb2Zmc2V0PSIyNSUiIHN0b3AtY29sb3I9IiNmZmRmOGYiLz4KICAgICAgPHN0b3Agb2Zmc2V0PSI1NSUiIHN0b3AtY29sb3I9IiMzYzM0NjgiLz4KICAgICAgPHN0b3Agb2Zmc2V0PSIxMDAlIiBzdG9wLWNvbG9yPSIjMTAxMjJhIi8+CiAgICA8L3JhZGlhbEdyYWRpZW50PgogICAgPGxpbmVhckdyYWRpZW50IGlkPSJwYWdlTCIgeDE9IjAiIHkxPSIwIiB4Mj0iMSIgeTI9IjAiPgogICAgICA8c3RvcCBvZmZzZXQ9IjAlIiBzdG9wLWNvbG9yPSIjZDhjZmE4Ii8+CiAgICAgIDxzdG9wIG9mZnNldD0iMTAwJSIgc3RvcC1jb2xvcj0iI2ZiZjNkOSIvPgogICAgPC9saW5lYXJHcmFkaWVudD4KICAgIDxsaW5lYXJHcmFkaWVudCBpZD0icGFnZVIiIHgxPSIwIiB5MT0iMCIgeDI9IjEiIHkyPSIwIj4KICAgICAgPHN0b3Agb2Zmc2V0PSIwJSIgc3RvcC1jb2xvcj0iI2ZiZjNkOSIvPgogICAgICA8c3RvcCBvZmZzZXQ9IjEwMCUiIHN0b3AtY29sb3I9IiNkOGNmYTgiLz4KICAgIDwvbGluZWFyR3JhZGllbnQ+CiAgPC9kZWZzPgogIDxyZWN0IHdpZHRoPSI4MDAiIGhlaWdodD0iMTYwMCIgZmlsbD0idXJsKCNnbG93KSIvPgoKICA8IS0tIGxpZ2h0IHJheXMgZmFubmluZyB1cCBmcm9tIHRoZSBib29rJ3MgZ3V0dGVyIC0tPgogIDxnIHN0cm9rZT0iI2ZmZjZkOCIgc3Ryb2tlLXdpZHRoPSI3IiBvcGFjaXR5PSIwLjUiPgogICAgPGxpbmUgeDE9IjQwMCIgeTE9IjEwMjAiIHgyPSI0MDAiIHkyPSIxMjAiLz4KICAgIDxsaW5lIHgxPSI0MDAiIHkxPSIxMDIwIiB4Mj0iMjMwIiB5Mj0iMTgwIi8+CiAgICA8bGluZSB4MT0iNDAwIiB5MT0iMTAyMCIgeDI9IjU3MCIgeTI9IjE4MCIvPgogICAgPGxpbmUgeDE9IjQwMCIgeTE9IjEwMjAiIHgyPSIxMjAiIHkyPSIzMzAiLz4KICAgIDxsaW5lIHgxPSI0MDAiIHkxPSIxMDIwIiB4Mj0iNjgwIiB5Mj0iMzMwIi8+CiAgICA8bGluZSB4MT0iNDAwIiB5MT0iMTAyMCIgeDI9IjcwIiB5Mj0iNTYwIi8+CiAgICA8bGluZSB4MT0iNDAwIiB5MT0iMTAyMCIgeDI9IjczMCIgeTI9IjU2MCIvPgogIDwvZz4KICA8ZyBzdHJva2U9IiNmZmU5YWQiIHN0cm9rZS13aWR0aD0iMyIgb3BhY2l0eT0iMC4zNSI+CiAgICA8bGluZSB4MT0iNDAwIiB5MT0iMTAyMCIgeDI9IjMxMCIgeTI9IjE0MCIvPgogICAgPGxpbmUgeDE9IjQwMCIgeTE9IjEwMjAiIHgyPSI0OTAiIHkyPSIxNDAiLz4KICAgIDxsaW5lIHgxPSI0MDAiIHkxPSIxMDIwIiB4Mj0iMTcwIiB5Mj0iMjUwIi8+CiAgICA8bGluZSB4MT0iNDAwIiB5MT0iMTAyMCIgeDI9IjYzMCIgeTI9IjI1MCIvPgogIDwvZz4KCiAgPCEtLSBzb2Z0IHN0YXJzIGluIHRoZSB1cHBlciBkYXJrIGNvcm5lcnMgLS0+CiAgPGcgZmlsbD0iI2ZmZmZmZiI+CiAgICA8Y2lyY2xlIGN4PSI4MCIgY3k9IjEyMCIgcj0iMiIgb3BhY2l0eT0iMC42Ii8+CiAgICA8Y2lyY2xlIGN4PSI3MjAiIGN5PSIxMTAiIHI9IjIiIG9wYWNpdHk9IjAuNiIvPgogICAgPGNpcmNsZSBjeD0iNjAiIGN5PSIyNjAiIHI9IjEuNSIgb3BhY2l0eT0iMC40Ii8+CiAgICA8Y2lyY2xlIGN4PSI3NDAiIGN5PSIyNzAiIHI9IjEuNSIgb3BhY2l0eT0iMC40Ii8+CiAgPC9nPgoKICA8IS0tIHdhcm0gZ2xvdyBiZWhpbmQgdGhlIGJvb2sgLS0+CiAgPGVsbGlwc2UgY3g9IjQwMCIgY3k9IjEwNjAiIHJ4PSIzMjAiIHJ5PSIxNDAiIGZpbGw9IiNmZmYyYzQiIG9wYWNpdHk9IjAuNTUiLz4KICA8ZWxsaXBzZSBjeD0iNDAwIiBjeT0iMTA2MCIgcng9IjIzMCIgcnk9Ijk1IiBmaWxsPSIjZmZmY2ViIiBvcGFjaXR5PSIwLjYiLz4KCiAgPCEtLSBib29rIGNvdmVyIC8gc3RhbmQgdW5kZXIgdGhlIHBhZ2VzIC0tPgogIDxwYXRoIGQ9Ik0xNTAgMTE4MCBRNDAwIDEyMzAgNjUwIDExODAgTDY1MCAxMjMwIFE0MDAgMTI4MCAxNTAgMTIzMCBaIiBmaWxsPSIjNWEzYTI0Ii8+CgogIDwhLS0gbGVmdCBwYWdlLCBhbmdsZWQgb3BlbiAtLT4KICA8cGF0aCBkPSJNNDAwIDEwODAKICAgICAgICAgICBMMTQ1IDExNTAKICAgICAgICAgICBRMTM1IDExNTUgMTM4IDExNjgKICAgICAgICAgICBMMTY1IDEyMzAKICAgICAgICAgICBRMTcwIDEyNDAgMTgyIDEyMzYKICAgICAgICAgICBMNDAwIDExNzAKICAgICAgICAgICBaIiBmaWxsPSJ1cmwoI3BhZ2VMKSIgc3Ryb2tlPSIjYzliZDkxIiBzdHJva2Utd2lkdGg9IjIiLz4KICA8IS0tIHJpZ2h0IHBhZ2UsIGFuZ2xlZCBvcGVuIC0tPgogIDxwYXRoIGQ9Ik00MDAgMTA4MAogICAgICAgICAgIEw2NTUgMTE1MAogICAgICAgICAgIFE2NjUgMTE1NSA2NjIgMTE2OAogICAgICAgICAgIEw2MzUgMTIzMAogICAgICAgICAgIFE2MzAgMTI0MCA2MTggMTIzNgogICAgICAgICAgIEw0MDAgMTE3MAogICAgICAgICAgIFoiIGZpbGw9InVybCgjcGFnZVIpIiBzdHJva2U9IiNjOWJkOTEiIHN0cm9rZS13aWR0aD0iMiIvPgoKICA8IS0tIGEgY291cGxlIG1vcmUgcGFnZSBsYXllcnMgdW5kZXJuZWF0aCBmb3IgdGhpY2tuZXNzIC0tPgogIDxwYXRoIGQ9Ik00MDAgMTA5MCBMMjAwIDExNDggUTE5MiAxMTUyIDE5NSAxMTYyIEw0MDAgMTE3OCBaIiBmaWxsPSIjZWZlNmM0IiBvcGFjaXR5PSIwLjkiLz4KICA8cGF0aCBkPSJNNDAwIDEwOTAgTDYwMCAxMTQ4IFE2MDggMTE1MiA2MDUgMTE2MiBMNDAwIDExNzggWiIgZmlsbD0iI2VmZTZjNCIgb3BhY2l0eT0iMC45Ii8+CgogIDwhLS0gdGV4dCBsaW5lcyBzdWdnZXN0aW5nIHNjcmlwdHVyZSAobm8gbGVnaWJsZSB3b3JkcyBuZWVkZWQpIC0tPgogIDxnIHN0cm9rZT0iI2E4OTc3ZiIgc3Ryb2tlLXdpZHRoPSIzIiBvcGFjaXR5PSIwLjU1IiBzdHJva2UtbGluZWNhcD0icm91bmQiPgogICAgPGxpbmUgeDE9IjIzMCIgeTE9IjExNjgiIHgyPSIzMzAiIHkyPSIxMTQ1Ii8+CiAgICA8bGluZSB4MT0iMjI1IiB5MT0iMTE4MyIgeDI9IjMzNSIgeTI9IjExNjAiLz4KICAgIDxsaW5lIHgxPSIyMjAiIHkxPSIxMTk4IiB4Mj0iMzQwIiB5Mj0iMTE3NiIvPgogICAgPGxpbmUgeDE9IjQ3MCIgeTE9IjExNDUiIHgyPSI1NzAiIHkyPSIxMTY4Ii8+CiAgICA8bGluZSB4MT0iNDY1IiB5MT0iMTE2MCIgeDI9IjU3NSIgeTI9IjExODMiLz4KICAgIDxsaW5lIHgxPSI0NjAiIHkxPSIxMTc2IiB4Mj0iNTgwIiB5Mj0iMTE5OCIvPgogIDwvZz4KCiAgPCEtLSBjZW50ZXIgc3BpbmUgaGlnaGxpZ2h0IC0tPgogIDxwYXRoIGQ9Ik00MDAgMTA4MCBMNDAwIDExNzgiIHN0cm9rZT0iI2ZmZmZmZiIgc3Ryb2tlLXdpZHRoPSI0IiBvcGFjaXR5PSIwLjYiLz4KCiAgPCEtLSBkaXN0YW50IGdyb3VuZC9oaWxsIHNpbGhvdWV0dGUgZm9yIGNvbnRpbnVpdHkgd2l0aCBvdGhlciBzY2VuZXMgLS0+CiAgPGcgZmlsbD0iIzBkMGUyMiIgb3BhY2l0eT0iMC44NSI+CiAgICA8cGF0aCBkPSJNMCAxNDIwIFEyMjAgMTM3MCA0NDAgMTQyMCBUODAwIDE0MDAgTDgwMCAxNjAwIEwwIDE2MDAgWiIvPgogIDwvZz4KPC9zdmc+Cg==", credit: "The Living Word — Hebrews 4:12" }
+];
+
+const BG_OVERLAY_GRADIENT =
+  "linear-gradient(180deg, rgba(15,20,30,.55) 0%, rgba(15,20,30,.72) 45%, rgba(15,20,30,.92) 78%, rgba(15,20,30,.98) 100%)";
+
+function applyTodaysArt() {
+  const idx = dayOfYear(new Date()) % BIBLE_ART.length;
+  const art = BIBLE_ART[idx];
+  // Set directly on <body> (not a separate fixed/negative-z-index layer) —
+  // that combination didn't reliably render across browsers in testing,
+  // while a plain body background always paints.
+  document.body.style.backgroundImage = BG_OVERLAY_GRADIENT + ", url('" + art.file + "')";
+  document.getElementById('artCredit').textContent = art.credit;
+}
+
+const LS = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch(e){ return d; } },
+  set(k, v) { localStorage.setItem(k, JSON.stringify(v)); }
+};
+
+function dayOfYear(d) {
+  const start = new Date(d.getFullYear(), 0, 0);
+  return Math.floor((d - start) / 86400000);
+}
+function todayKey(d = new Date()) {
+  return d.toISOString().slice(0,10);
+}
+
+// ---------------------------------------------------------------------------
+// Verse of the day selection (deterministic per calendar day, cycles list;
+// "Shuffle" temporarily overrides today's pick without breaking the streak)
+// ---------------------------------------------------------------------------
+function verseIndexForToday() {
+  const override = LS.get('shuffleOverrideDate', null);
+  if (override === todayKey()) {
+    return LS.get('shuffleOverrideIndex', 0);
+  }
+  return dayOfYear(new Date()) % VERSES.length;
+}
+
+let currentIndex = verseIndexForToday();
+let currentText = "";
+// practiceText is currentText with the trailing "(ESV)" attribution stripped,
+// so it doesn't get counted as a "word" in the practice games below. The
+// reference (shown above each practice mode) carries the "(ESV)" credit instead.
+let practiceText = "";
+
+function stripCopyright(text) {
+  return text.replace(/\s*\(ESV\)\s*$/i, '').trim();
+}
+
+// ---------------------------------------------------------------------------
+// ESV API
+// ---------------------------------------------------------------------------
+// If you'd like your ESV API key baked into the app (so it works without
+// visiting Settings first), paste it below between the quotes. It will still
+// be overridden by whatever is saved in Settings on this device.
+const DEFAULT_ESV_KEY = "ebb9edb3e5439f8abed328c8df5fe397e5bc2d2b";
+
+async function fetchEsv(ref) {
+  const key = LS.get('esvApiKey', '') || DEFAULT_ESV_KEY;
+  if (!key) throw new Error('NO_KEY');
+  const url = 'https://api.esv.org/v3/passage/text/?q=' + encodeURIComponent(ref) +
+    '&include-headings=false&include-footnotes=false&include-verse-numbers=false' +
+    '&include-short-copyright=true&include-passage-references=false';
+  const res = await fetch(url, { headers: { 'Authorization': 'Token ' + key } });
+  if (!res.ok) throw new Error('HTTP_' + res.status);
+  const data = await res.json();
+  if (!data.passages || !data.passages.length) throw new Error('NOT_FOUND');
+  return data.passages[0].trim();
+}
+
+async function loadTodayVerse() {
+  const v = VERSES[currentIndex];
+  document.getElementById('todayTheme').textContent = v.theme;
+  document.getElementById('todayRef').textContent = v.ref;
+  document.getElementById('todayText').textContent = 'Fetching from ESV…';
+  document.getElementById('pTheme').textContent = v.theme;
+  document.getElementById('pRef').textContent = v.ref + ' (ESV)';
+  try {
+    currentText = await fetchEsv(v.ref);
+    practiceText = stripCopyright(currentText);
+    document.getElementById('todayText').textContent = currentText;
+    resetPractice();
+  } catch (e) {
+    currentText = "";
+    practiceText = "";
+    if (e.message === 'NO_KEY') {
+      document.getElementById('todayText').innerHTML =
+        'Add your free ESV API key in <b>Settings</b> to load verse text. ' +
+        '(Reference: ' + v.ref + ')';
+    } else {
+      document.getElementById('todayText').textContent =
+        'Could not load text (' + e.message + '). Check your API key in Settings, or try again.';
+    }
+  }
+  updateFavoriteButton();
+}
+
+function pickNewVerseToday() {
+  let idx;
+  do { idx = Math.floor(Math.random() * VERSES.length); } while (idx === currentIndex && VERSES.length > 1);
+  currentIndex = idx;
+  LS.set('shuffleOverrideDate', todayKey());
+  LS.set('shuffleOverrideIndex', idx);
+  loadTodayVerse();
+}
+
+// ---------------------------------------------------------------------------
+// Favorites / custom verses
+// ---------------------------------------------------------------------------
+function getFavorites() { return LS.get('favorites', []); }
+function updateFavoriteButton() {
+  const favs = getFavorites();
+  const ref = VERSES[currentIndex].ref;
+  document.getElementById('btnFavorite').textContent = favs.includes(ref) ? '★ Saved' : '☆ Save';
+}
+document.getElementById('btnFavorite').addEventListener('click', () => {
+  const ref = VERSES[currentIndex].ref;
+  let favs = getFavorites();
+  if (favs.includes(ref)) favs = favs.filter(r => r !== ref);
+  else favs.push(ref);
+  LS.set('favorites', favs);
+  updateFavoriteButton();
+  renderMineLists();
+});
+
+function renderMineLists() {
+  const favs = getFavorites();
+  const favEl = document.getElementById('favList');
+  favEl.innerHTML = favs.length ? '' : '<div class="muted">No saved verses yet — tap the Save button on Today’s verse.</div>';
+  favs.forEach(ref => {
+    const row = document.createElement('div');
+    row.className = 'list-item';
+    row.innerHTML = '<span>' + ref + '</span><span class="pill">favorite</span>';
+    favEl.appendChild(row);
+  });
+
+  document.getElementById('rotationCount').textContent = VERSES.length;
+  const allEl = document.getElementById('allList');
+  allEl.innerHTML = '';
+  VERSES.forEach(v => {
+    const row = document.createElement('div');
+    row.className = 'list-item';
+    row.innerHTML = '<span>' + v.ref + '</span><span class="pill">' + v.theme + '</span>';
+    allEl.appendChild(row);
+  });
+}
+
+document.getElementById('btnAddRef').addEventListener('click', () => {
+  const input = document.getElementById('addRefInput');
+  const ref = input.value.trim();
+  if (!ref) return;
+  const custom = LS.get('customVerses', []);
+  custom.push({ref, theme:'Custom'});
+  LS.set('customVerses', custom);
+  VERSES.push({ref, theme:'Custom'});
+  input.value = '';
+  renderMineLists();
+});
+
+// ---------------------------------------------------------------------------
+// Practice: progressive word-hiding
+// ---------------------------------------------------------------------------
+let hideStage = 0;
+const HIDE_STAGES = 5;
+
+function wordsOf(text) { return text.split(/(\s+)/); }
+
+function renderPracticeText() {
+  const el = document.getElementById('pText');
+  if (!practiceText) { el.textContent = 'Load today’s verse first (needs ESV key in Settings).'; return; }
+  const parts = wordsOf(practiceText);
+  const wordIdxs = [];
+  parts.forEach((p, i) => { if (p.trim().length) wordIdxs.push(i); });
+  const hideFrac = hideStage / HIDE_STAGES; // 0 -> 1
+  const toHide = new Set();
+  wordIdxs.forEach((idx, n) => {
+    if (hideFrac >= 1) { toHide.add(idx); return; }
+    // deterministic pseudo-random spread based on index
+    if ((n % HIDE_STAGES) < hideStage) toHide.add(idx);
+  });
+  el.innerHTML = parts.map((p, i) => {
+    if (toHide.has(i)) {
+      const len = Math.max(2, Math.min(8, p.replace(/[^\w]/g,'').length));
+      return '<span class="blank">' + '▁'.repeat(len) + '</span>';
+    }
+    return p;
+  }).join('');
+  document.getElementById('hideLevel').textContent =
+    hideStage === 0 ? 'Stage 0 of ' + HIDE_STAGES + ' — full text' :
+    hideStage >= HIDE_STAGES ? 'Fully hidden — recall from memory' :
+    'Stage ' + hideStage + ' of ' + HIDE_STAGES + ' — some words hidden';
+}
+
+function resetPractice() {
+  hideStage = 0;
+  renderPracticeText();
+  renderBlankMode();
+  renderOrderMode();
+  document.getElementById('typeInput').value = '';
+  document.getElementById('typeResult').innerHTML = '';
+}
+
+document.getElementById('btnHideMore').addEventListener('click', () => {
+  hideStage = Math.min(HIDE_STAGES, hideStage + 1);
+  renderPracticeText();
+  if (hideStage >= HIDE_STAGES) markPracticedToday();
+});
+document.getElementById('btnReveal').addEventListener('click', () => {
+  hideStage = 0;
+  renderPracticeText();
+});
+
+// ---------------------------------------------------------------------------
+// Practice: fill in the blank
+// ---------------------------------------------------------------------------
+let blankAnswerKey = []; // { word, cleaned } for each blanked position, in doc order
+
+function renderBlankMode() {
+  const el = document.getElementById('blankText');
+  const resultEl = document.getElementById('blankResult');
+  if (resultEl) resultEl.innerHTML = '';
+  if (!practiceText) { el.textContent = 'Load today’s verse first (needs ESV key in Settings).'; return; }
+  const parts = wordsOf(practiceText);
+  const wordIdxs = [];
+  parts.forEach((p, i) => { if (p.trim().length) wordIdxs.push(i); });
+  // Blank out roughly every 3rd word (min 3 blanks) picked at a spread interval
+  const numBlanks = Math.max(3, Math.round(wordIdxs.length * 0.3));
+  const step = Math.max(1, Math.floor(wordIdxs.length / numBlanks));
+  const blankIdxs = [];
+  for (let n = 0; n < wordIdxs.length && blankIdxs.length < numBlanks; n += step) {
+    blankIdxs.push(wordIdxs[n]);
+  }
+  blankAnswerKey = [];
+  let blankNum = 0;
+  el.innerHTML = parts.map((p, i) => {
+    if (blankIdxs.includes(i)) {
+      const cleaned = p.toLowerCase().replace(/[^\w']/g, '');
+      blankAnswerKey.push(cleaned);
+      const myNum = blankNum++;
+      const widthCh = Math.max(3, p.length);
+      return '<input class="blank-input" type="text" autocomplete="off" autocapitalize="off" ' +
+        'data-blank="' + myNum + '" style="width:' + (widthCh * 9 + 14) + 'px">';
+    }
+    return escapeHtml(p);
+  }).join('');
+}
+
+document.getElementById('btnCheckBlanks').addEventListener('click', () => {
+  const inputs = document.querySelectorAll('#blankText .blank-input');
+  let correct = 0;
+  inputs.forEach(inp => {
+    const n = Number(inp.dataset.blank);
+    const given = inp.value.toLowerCase().replace(/[^\w']/g, '');
+    const isRight = given.length > 0 && given === blankAnswerKey[n];
+    inp.classList.remove('correct', 'wrong');
+    inp.classList.add(isRight ? 'correct' : 'wrong');
+    if (isRight) correct++;
+  });
+  const pct = inputs.length ? Math.round((correct / inputs.length) * 100) : 0;
+  document.getElementById('blankResult').innerHTML =
+    '<div class="muted">' + correct + ' / ' + inputs.length + ' correct (' + pct + '%)</div>';
+  if (pct >= 90) { markPracticedToday(); showToast('🔥 Nice! Streak updated.'); }
+});
+
+document.getElementById('btnNewBlanks').addEventListener('click', renderBlankMode);
+
+document.getElementById('btnRevealBlanks').addEventListener('click', () => {
+  const inputs = document.querySelectorAll('#blankText .blank-input');
+  inputs.forEach(inp => {
+    const n = Number(inp.dataset.blank);
+    inp.value = blankAnswerKey[n];
+    inp.classList.remove('wrong');
+    inp.classList.add('correct');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Practice: word order (rearrange the shuffled words)
+// ---------------------------------------------------------------------------
+let orderTokens = [];   // original-order word tokens
+let orderBank = [];     // original indices currently in the bank (shuffled)
+let orderPlaced = [];   // original indices placed in order by the user
+
+function shuffleArray(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function renderOrderMode() {
+  const resultEl = document.getElementById('orderResult');
+  if (resultEl) resultEl.innerHTML = '';
+  if (!practiceText) {
+    document.getElementById('bankZone').innerHTML = '<span class="muted">Load today’s verse first.</span>';
+    document.getElementById('assembledZone').innerHTML = '';
+    return;
+  }
+  orderTokens = practiceText.split(/\s+/).filter(Boolean);
+  orderPlaced = [];
+  orderBank = shuffleArray(orderTokens.map((_, i) => i));
+  renderOrderZones();
+}
+
+function renderOrderZones() {
+  const bankEl = document.getElementById('bankZone');
+  const assembledEl = document.getElementById('assembledZone');
+  bankEl.innerHTML = orderBank.map(i =>
+    '<button class="word-chip" data-idx="' + i + '" data-zone="bank">' + escapeHtml(orderTokens[i]) + '</button>'
+  ).join('');
+  assembledEl.innerHTML = orderPlaced.length ? orderPlaced.map(i =>
+    '<button class="word-chip placed" data-idx="' + i + '" data-zone="placed">' + escapeHtml(orderTokens[i]) + '</button>'
+  ).join('') : '<span class="muted">Tap words below to build the verse…</span>';
+}
+
+document.getElementById('bankZone').addEventListener('click', (e) => {
+  const btn = e.target.closest('.word-chip');
+  if (!btn || btn.dataset.zone !== 'bank') return;
+  const idx = Number(btn.dataset.idx);
+  orderBank = orderBank.filter(i => i !== idx);
+  orderPlaced.push(idx);
+  renderOrderZones();
+});
+document.getElementById('assembledZone').addEventListener('click', (e) => {
+  const btn = e.target.closest('.word-chip');
+  if (!btn || btn.dataset.zone !== 'placed') return;
+  const idx = Number(btn.dataset.idx);
+  orderPlaced = orderPlaced.filter(i => i !== idx);
+  orderBank.push(idx);
+  renderOrderZones();
+});
+
+// Compares words by their text (not their original position), so that when a
+// verse repeats the same word (e.g. "the" twice), placing any matching
+// occurrence in a correct slot counts — you don't have to track which exact
+// copy came from which original spot.
+function coreWord(token) {
+  return token.toLowerCase().replace(/[^\w']/g, '');
+}
+function wordMatchesSlot(placedOriginalIdx, slotIdx) {
+  return coreWord(orderTokens[placedOriginalIdx]) === coreWord(orderTokens[slotIdx]);
+}
+
+document.getElementById('btnCheckOrder').addEventListener('click', () => {
+  const assembledEl = document.getElementById('assembledZone');
+  const isFullyCorrect = orderPlaced.length === orderTokens.length &&
+    orderPlaced.every((v, i) => wordMatchesSlot(v, i));
+  Array.from(assembledEl.querySelectorAll('.word-chip')).forEach((chip, i) => {
+    const idx = Number(chip.dataset.idx);
+    chip.classList.remove('correct', 'wrong');
+    chip.classList.add(wordMatchesSlot(idx, i) ? 'correct' : 'wrong');
+  });
+  const correctCount = orderPlaced.filter((v, i) => wordMatchesSlot(v, i)).length;
+  document.getElementById('orderResult').innerHTML =
+    orderPlaced.length < orderTokens.length
+      ? '<div class="muted">Place all the words, then check again.</div>'
+      : '<div class="muted">' + correctCount + ' / ' + orderTokens.length + ' in the right spot.</div>';
+  if (isFullyCorrect) { markPracticedToday(); showToast('🔥 Perfect order! Streak updated.'); }
+});
+
+document.getElementById('btnShuffleOrder').addEventListener('click', renderOrderMode);
+
+// ---------------------------------------------------------------------------
+// Practice mode tab switching
+// ---------------------------------------------------------------------------
+document.querySelectorAll('.mode-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.mode-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    document.querySelectorAll('.practice-mode').forEach(m => m.classList.add('hidden'));
+    document.getElementById('mode-' + tab.dataset.mode).classList.remove('hidden');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Practice: type-it-out check
+// ---------------------------------------------------------------------------
+function normalizeWords(text) {
+  return text.toLowerCase().replace(/[^\w\s']/g, '').split(/\s+/).filter(Boolean);
+}
+
+document.getElementById('btnCheck').addEventListener('click', () => {
+  const typed = document.getElementById('typeInput').value;
+  if (!practiceText) return;
+  const target = normalizeWords(practiceText);
+  const given = normalizeWords(typed);
+  let correct = 0;
+  const html = [];
+  const max = Math.max(target.length, given.length);
+  for (let i = 0; i < max; i++) {
+    const g = given[i];
+    const t = target[i];
+    if (g && t && g === t) { correct++; html.push('<span class="diff-word diff-good">' + escapeHtml(g) + '</span>'); }
+    else if (g) { html.push('<span class="diff-word diff-bad">' + escapeHtml(g) + '</span>'); }
+  }
+  const pct = target.length ? Math.round((correct / target.length) * 100) : 0;
+  document.getElementById('typeResult').innerHTML =
+    '<div class="muted" style="margin-bottom:6px;">Accuracy: ' + pct + '%</div><div>' + html.join(' ') + '</div>';
+  if (pct >= 90) {
+    markPracticedToday();
+    showToast('🔥 Great recall! Streak updated.');
+  }
+});
+
+document.getElementById('btnClearType').addEventListener('click', () => {
+  document.getElementById('typeInput').value = '';
+  document.getElementById('typeResult').innerHTML = '';
+});
+
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// ---------------------------------------------------------------------------
+// Streak tracking
+// ---------------------------------------------------------------------------
+function markPracticedToday() {
+  const today = todayKey();
+  const last = LS.get('lastPracticeDate', null);
+  if (last === today) { refreshStreakUI(); return; }
+  let streak = LS.get('streak', 0);
+  if (last) {
+    const yesterday = todayKey(new Date(Date.now() - 86400000));
+    streak = (last === yesterday) ? streak + 1 : 1;
+  } else {
+    streak = 1;
+  }
+  LS.set('streak', streak);
+  LS.set('lastPracticeDate', today);
+  LS.set('best', Math.max(streak, LS.get('best', 0)));
+  LS.set('practiceCount', LS.get('practiceCount', 0) + 1);
+  refreshStreakUI();
+}
+
+function refreshStreakUI() {
+  const streak = LS.get('streak', 0);
+  document.getElementById('streakCount').textContent = streak;
+  document.getElementById('settingsStreak').textContent = streak;
+  document.getElementById('settingsBest').textContent = LS.get('best', 0);
+  document.getElementById('settingsCount').textContent = LS.get('practiceCount', 0);
+}
+
+function showToast(msg) {
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2200);
+}
+
+// ---------------------------------------------------------------------------
+// Settings
+// ---------------------------------------------------------------------------
+document.getElementById('esvKeyInput').value = LS.get('esvApiKey', '') || DEFAULT_ESV_KEY;
+document.getElementById('reminderTime').value = LS.get('reminderTime', '07:00');
+
+document.getElementById('btnSaveKey').addEventListener('click', () => {
+  LS.set('esvApiKey', document.getElementById('esvKeyInput').value.trim());
+  document.getElementById('keyStatus').textContent = 'Saved.';
+  loadTodayVerse();
+});
+document.getElementById('btnTestKey').addEventListener('click', async () => {
+  const status = document.getElementById('keyStatus');
+  status.textContent = 'Testing…';
+  try {
+    await fetchEsv('John 11:35');
+    status.textContent = '✅ Key works!';
+  } catch (e) {
+    status.textContent = '❌ ' + (e.message === 'NO_KEY' ? 'Enter a key first.' : 'Failed: ' + e.message);
+  }
+});
+document.getElementById('btnSaveReminder').addEventListener('click', () => {
+  LS.set('reminderTime', document.getElementById('reminderTime').value);
+  showToast('Reminder preference saved.');
+});
+document.getElementById('btnResetProgress').addEventListener('click', () => {
+  if (!confirm('Reset streak and progress? This cannot be undone.')) return;
+  ['streak','best','practiceCount','lastPracticeDate','favorites'].forEach(k => localStorage.removeItem(k));
+  refreshStreakUI();
+  renderMineLists();
+});
+
+// ---------------------------------------------------------------------------
+// Navigation
+// ---------------------------------------------------------------------------
+document.querySelectorAll('.nav-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    ['today','practice','mine','settings'].forEach(v => {
+      document.getElementById('view-' + v).classList.toggle('hidden', v !== btn.dataset.view);
+    });
+    if (btn.dataset.view === 'mine') renderMineLists();
+  });
+});
+document.getElementById('btnGoPractice').addEventListener('click', () => {
+  document.querySelector('[data-view="practice"]').click();
+});
+document.getElementById('btnNewVerse').addEventListener('click', pickNewVerseToday);
+
+// ---------------------------------------------------------------------------
+// Init
+// ---------------------------------------------------------------------------
+(function init() {
+  applyTodaysArt();
+  const custom = LS.get('customVerses', []);
+  custom.forEach(c => VERSES.push(c));
+  refreshStreakUI();
+  loadTodayVerse();
+  renderMineLists();
+  // Note: OneSignal's SDK (loaded above) registers OneSignalSDKWorker.js itself
+  // once it initializes, so no manual service worker registration is needed here.
+})();
+</script>
+</body>
+</html>
